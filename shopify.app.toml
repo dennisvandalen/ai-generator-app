@@ -1,0 +1,32 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "dabfce4798337ee21f0a8970fb76757f"
+name = "[DEV] AI Pet Converter"
+handle = "ai-generator-app"
+application_url = "https://durable-sodium-induced-thereafter.trycloudflare.com"
+embedded = true
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products"
+
+[auth]
+redirect_urls = ["https://durable-sodium-induced-thereafter.trycloudflare.com/auth/callback", "https://durable-sodium-induced-thereafter.trycloudflare.com/auth/shopify/callback", "https://durable-sodium-induced-thereafter.trycloudflare.com/api/auth/callback"]
+
+[pos]
+embedded = false
