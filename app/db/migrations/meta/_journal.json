@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1751992054858,
+      "tag": "0000_harsh_shatterstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1751992127828,
+      "tag": "0001_clumsy_jack_murdock",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1751993292366,
+      "tag": "0002_wooden_ben_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1752066129270,
+      "tag": "0003_dazzling_stephen_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1752067652958,
+      "tag": "0004_exotic_the_fury",
+      "breakpoints": true
+    }
+  ]
+}

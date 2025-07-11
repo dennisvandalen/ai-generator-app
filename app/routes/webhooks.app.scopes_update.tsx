@@ -1,6 +1,8 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
-import db from "../db.server";
+import { eq } from 'drizzle-orm';
+import drizzleDb from "../db.server";
+import { sessionTable } from "../db/schema";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
     const { payload, session, topic, shop } = await authenticate.webhook(request);
@@ -8,14 +10,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const current = payload.current as string[];
     if (session) {
-        await db.session.update({   
-            where: {
-                id: session.id
-            },
-            data: {
+        await drizzleDb
+            .update(sessionTable)
+            .set({
                 scope: current.toString(),
-            },
-        });
+            })
+            .where(eq(sessionTable.id, session.id));
     }
     return new Response();
 };

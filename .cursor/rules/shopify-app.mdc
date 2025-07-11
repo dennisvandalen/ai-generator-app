@@ -1,0 +1,101 @@
+---
+alwaysApply: true
+---
+
+# Cursor Rules for Shopify Remix App Template
+
+## Project Context & Core Technologies
+
+1.  **Identify the Stack:** Recognize that this project is a Shopify App built using the Remix framework, Bun, TypeScript, React, Drizzle ORM (SQLite), and Shopify's Polaris component library.
+2.  **Key Files:** Be aware of critical configuration and setup files:
+    *   `shopify.app.toml`: Main app configuration.
+    *   `remix.config.js`: Remix configuration.
+    *   `drizzle.config.ts`: Drizzle ORM configuration and migration settings.
+    *   `app/db/schema.ts`: Database schema definition with tables and relations.
+    *   `app/db.server.ts`: Database connection and Drizzle client setup.
+    *   `app/shopify.server.ts`: Server-side Shopify utilities (authentication, API clients, webhook registration, billing).
+    *   `app/root.tsx`: Root layout component.
+    *   `app/entry.server.tsx` & `app/entry.client.tsx`: Server and client entry points.
+3.  **Primary Language:** Use TypeScript for all code generation and modifications. Ensure strong typing wherever possible, leveraging Drizzle's type inference system.
+
+## Shopify Integration Rules
+
+4.  **Admin API:**
+    *   **Authentication:** Always use the authenticated `admin` GraphQL client provided by `shopify.server.ts` (typically passed via loader/action context) for interacting with the Shopify Admin API.
+    *   **Preference:** Prefer the **GraphQL Admin API** over the REST Admin API unless REST is strictly necessary or significantly simpler for a specific task.
+    *   **Context:** Expect the authenticated Shopify context (containing `admin`, `session`, `billing` etc.) to be available within Remix `loader` and `action` functions.
+5.  **UI Components (Polaris):**
+    *   **Mandatory Use:** For *all* UI within the embedded Shopify Admin section (routes under `/app`), **exclusively use React components from `@shopify/polaris`**.
+    *   **SaveBar Exception:** Use HTML `<button>` elements (not Polaris Button) inside SaveBar components for proper App Bridge integration. Use Polaris Button components everywhere else.
+    *   **Styling:** Ensure Polaris CSS is correctly imported (usually handled in `root.tsx` or relevant layout files). Do not introduce custom global stylesheets that conflict with Polaris unless absolutely necessary and scoped.
+    *   **Layout:** Utilize Polaris layout components (`Page`, `Layout`, `Card`, `BlockStack`, `InlineStack`, etc.) for proper structure within the Shopify Admin iframe.
+6.  **Frontend Interactions (App Bridge):**
+    *   Use `@shopify/app-bridge-react` for interacting with the Shopify Admin frontend from within your embedded app.
+    *   Common uses: `useAppBridge` hook, `Toast`, `SaveBar`, `Redirect`, `TitleBar`, Resource Pickers.
+7.  **Webhooks:**
+    *   When creating webhook handlers, use the utilities provided in `app/shopify.server.ts` for registration and request validation.
+    *   Place webhook handler logic within appropriate Remix `action` functions, typically in dedicated routes like `app/routes/webhooks.**.tsx`.
+
+## Remix Framework Rules
+
+8.  **Routing:** Understand Remix's file-based routing within the `app/routes/` directory.
+    *   Admin-facing app routes live under `app/routes/app.**`.
+    *   Current routes include: app, products, generate, generations, styles, analytics, settings, sizes, orders, downloads.
+    *   API endpoints or webhook handlers live at the root or under specific paths like `app/routes/api.**` or `app/routes/webhooks.**.tsx`.
+9.  **Data Loading:** Place server-side data fetching logic inside `loader` functions. Use the `json` helper from `@remix-run/node` to return data. Access loader data in components using `useLoaderData`.
+10. **Data Mutations:** Place server-side data mutation logic (form submissions, API calls triggered by user actions) inside `action` functions. Use `redirect` or `json` helpers for responses.
+11. **Forms & Submissions:** Use Remix's `<Form>` component for submissions that trigger actions. Use `useSubmit` or `useFetcher` for more controlled submissions (e.g., JavaScript-driven updates, background actions).
+
+## Database (Drizzle ORM) Rules
+
+12. **Interaction:** Use the Drizzle client imported as `drizzleDb` from `~/db.server` for all database operations within `loader` and `action` functions.
+    ```typescript
+    import drizzleDb from "~/db.server";
+    // Query example
+    const shops = await drizzleDb.select().from(shopsTable);
+    // Insert example  
+    await drizzleDb.insert(shopsTable).values(newShop);
+    ```
+13. **Schema Changes:** If asked to modify the data model, update `app/db/schema.ts`. The schema includes tables for:
+    *   `shopsTable`: Shopify store information and OAuth tokens
+    *   `productsTable`: Shopify products enabled for AI generation
+    *   `sizesTable`: Image sizes/dimensions for products
+    *   `aiStylesTable`: AI generation style templates
+    *   `generationsTable`: AI image generation records and metadata
+    *   `ordersTable`: Shopify order tracking
+    *   `watermarksTable`: Watermark settings per shop
+    *   `quotasTable`: Usage limits and billing quotas per shop
+14. **Migrations:** Remind the user to run `npx drizzle-kit generate` to create migrations after schema changes and `npx drizzle-kit migrate` to apply them. The migrations are stored in `app/db/migrations/`.
+15. **Types:** Leverage Drizzle's type inference. Use `typeof tableName.$inferSelect` for select types and `typeof tableName.$inferInsert` for insert types. Types are exported from the schema file.
+16. **Relations:** Use Drizzle's relational queries when needed with the `with` syntax for joins and nested data fetching.
+
+## Business Logic Context
+
+17. **AI Image Generation App:** This is an AI image generation app for Shopify merchants. Key concepts:
+    *   Merchants upload products and define sizes (dimensions)
+    *   Customers can generate AI-styled versions of product images
+    *   Preview generations have watermarks; final high-res images are delivered after order
+    *   Shops have quotas and usage limits
+    *   Multiple AI styles are available per shop
+18. **Core Workflows:**
+    *   **Product Setup:** Merchants add products, configure sizes, enable AI styles
+    *   **Generation:** Customers upload images, select styles, get watermarked previews
+    *   **Order Fulfillment:** After order, generate final high-res images without watermarks
+    *   **Analytics:** Track generations, usage, popular styles, revenue
+
+## General Coding Practices
+
+19. **Error Handling:** Implement robust error handling, especially around API calls (Shopify API, database operations). Use `try...catch` blocks and provide meaningful feedback to the user.
+20. **Security:** Assume all user input needs validation/sanitization. Ensure authenticated API clients are always used for Shopify interactions.
+21. **Modularity:** Create reusable React components within the `app/components/` directory where appropriate. Keep loaders and actions focused on their specific tasks.
+22. **Clarity:** If a request is ambiguous (e.g., "add a button"), ask for clarification on its purpose, placement, data requirements, and expected action.
+23. **Performance:** Consider database query optimization with Drizzle's prepared statements for frequently executed queries. Use appropriate indexes as defined in the schema.
+
+## Development Tools & MCP Access
+
+Use Shopify MCP as needed. You have access to the following tools:
+- `introspect_admin_schema`: For exploring Shopify Admin API GraphQL schema
+- `search_dev_docs`: For searching Shopify development documentation
+- `fetch_docs_by_path`: For retrieving specific Shopify documentation pages
+
+When working with the Shopify Admin API, prefer using these tools to get accurate, up-to-date schema information rather than relying on assumptions.

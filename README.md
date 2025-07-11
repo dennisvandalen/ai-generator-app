@@ -1,61 +1,16 @@
-# Shopify App Template - Remix
 
-This is a template for building a [Shopify app](https://shopify.dev/docs/apps/getting-started) using the [Remix](https://remix.run) framework.
 
-Rather than cloning this repo, you can use your preferred package manager and the Shopify CLI with [these steps](https://shopify.dev/docs/apps/getting-started/create).
+cloudflared tunnel --url http://localhost:3000
 
-Visit the [`shopify.dev` documentation](https://shopify.dev/docs/api/shopify-app-remix) for more details on the Remix app package.
+npm run dev -- --tunnel-url=https://criminal-beat-buf-abilities.trycloudflare.com:3000
 
-## Quick start
-
-### Prerequisites
-
-Before you begin, you'll need the following:
-
-1. **Node.js**: [Download and install](https://nodejs.org/en/download/) it if you haven't already.
-2. **Shopify Partner Account**: [Create an account](https://partners.shopify.com/signup) if you don't have one.
-3. **Test Store**: Set up either a [development store](https://help.shopify.com/en/partners/dashboard/development-stores#create-a-development-store) or a [Shopify Plus sandbox store](https://help.shopify.com/en/partners/dashboard/managing-stores/plus-sandbox-store) for testing your app.
-
-### Setup
-
-If you used the CLI to create the template, you can skip this section.
-
-Using yarn:
-
-```shell
-yarn install
-```
-
-Using npm:
-
-```shell
-npm install
-```
-
-Using pnpm:
-
-```shell
-pnpm install
-```
 
 ### Local Development
-
-Using yarn:
-
-```shell
-yarn dev
-```
 
 Using npm:
 
 ```shell
 npm run dev
-```
-
-Using pnpm:
-
-```shell
-pnpm run dev
 ```
 
 Press P to open the URL to your app. Once you click install, you can start development.
@@ -98,36 +53,120 @@ This template comes preconfigured with examples of:
 
 Please read the [documentation for @shopify/shopify-app-remix](https://www.npmjs.com/package/@shopify/shopify-app-remix#authenticating-admin-requests) to understand what other API's are available.
 
+### App Proxy Authentication
+
+This template includes app proxy routes for storefront integration. App proxies allow your app to serve content through the merchant's domain (e.g., `shop.com/tools/your-app`).
+
+**Configuration:**
+- App proxy configured in `shopify.app.toml` with prefix `tools` and subpath `ai-studio`
+- Routes accessible via `https://shop.myshopify.com/tools/ai-studio/*`
+
+**Authentication:**
+```typescript
+// app/routes/api.your-proxy-route.ts
+import { authenticate } from "~/shopify.server";
+
+export async function loader({ request }) {
+  const { session } = await authenticate.public.appProxy(request);
+  
+  return json({
+    success: true,
+    shop: session.shop,
+    // your data
+  });
+}
+```
+
+**Testing:**
+- ✅ Via proxy: `https://your-shop.myshopify.com/tools/ai-studio/api/your-route` (authenticated)
+- ❌ Direct: `https://your-tunnel.com/api/your-route` (fails authentication)
+
 ## Deployment
 
 ### Application Storage
 
-This template uses [Prisma](https://www.prisma.io/) to store session data, by default using an [SQLite](https://www.sqlite.org/index.html) database.
-The database is defined as a Prisma schema in `prisma/schema.prisma`.
+This template uses [Drizzle ORM](https://drizzle.team/) to store session data, by default using an [SQLite](https://www.sqlite.org/index.html) database. The database schema is defined in `app/db/schema.ts` using Drizzle's type-safe schema definition.
+
+#### What are Shopify Sessions?
+
+Shopify sessions are critical for maintaining authenticated communication between your app and Shopify. They store:
+
+- **Access Tokens**: OAuth tokens that allow your app to make API calls on behalf of merchants
+- **Shop Information**: The specific Shopify store domain and configuration
+- **User Data**: Information about the logged-in user (for online sessions)
+- **Scope**: The permissions your app has been granted
+- **Expiration**: When the session becomes invalid
+
+#### Why Custom Session Storage?
+
+Shopify apps require persistent session storage to:
+1. **Maintain Authentication**: Keep users logged in across requests
+2. **API Access**: Store access tokens needed for Shopify API calls
+3. **Multi-tenant Support**: Handle multiple shop installations
+4. **Security**: Securely store sensitive authentication data
+
+#### Drizzle vs Prisma Migration
+
+This template was migrated from Prisma to Drizzle ORM for several benefits:
+
+**Performance & Bundle Size**:
+- Drizzle ORM is lighter and faster than Prisma
+- Smaller bundle size, better for serverless deployments
+- No runtime dependency, better cold start performance
+
+**Type Safety**:
+- Compile-time query validation
+- Better TypeScript integration
+- SQL-like syntax with full type inference
+
+**Cloudflare D1 Ready**:
+- Built with future Cloudflare D1 deployment in mind
+- Easy migration path from local SQLite to D1
+- Serverless-first architecture
+
+#### Official Shopify Drizzle Session Storage
+
+This template uses the official `@shopify/shopify-app-session-storage-drizzle` package which provides a robust, tested implementation of Shopify's `SessionStorage` interface specifically designed for Drizzle ORM.
+
+**Schema Requirements**:
+The official package requires a specific database schema format:
+
+```typescript
+export const sessionTable = sqliteTable('session', {
+  id: text('id').primaryKey(),
+  shop: text('shop').notNull(),
+  state: text('state').notNull(),
+  isOnline: integer('isOnline', {mode: 'boolean'}).notNull().default(false),
+  scope: text('scope'),
+  expires: text('expires'),
+  accessToken: text('accessToken'),
+  userId: blob('userId', {mode: 'bigint'}),
+});
+```
+
+**Setup**:
+```typescript
+import { DrizzleSessionStorageSQLite } from '@shopify/shopify-app-session-storage-drizzle';
+import drizzleDb from './db.server';
+import { sessionTable } from './db/schema';
+
+const storage = new DrizzleSessionStorageSQLite(drizzleDb, sessionTable);
+```
+
+**Benefits of Official Package**:
+- Thoroughly tested by Shopify team
+- Handles proper Session class instantiation
+- Built-in date/timestamp conversion
+- Optimized performance for session operations
+- Full compatibility with all Shopify session features
 
 This use of SQLite works in production if your app runs as a single instance.
 The database that works best for you depends on the data your app needs and how it is queried.
 You can run your database of choice on a server yourself or host it with a SaaS company.
-Here's a short list of databases providers that provide a free tier to get started:
-
-| Database   | Type             | Hosters                                                                                                                                                                                                                               |
-| ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MySQL      | SQL              | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-mysql), [Planet Scale](https://planetscale.com/), [Amazon Aurora](https://aws.amazon.com/rds/aurora/), [Google Cloud SQL](https://cloud.google.com/sql/docs/mysql) |
-| PostgreSQL | SQL              | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-postgresql), [Amazon Aurora](https://aws.amazon.com/rds/aurora/), [Google Cloud SQL](https://cloud.google.com/sql/docs/postgres)                                   |
-| Redis      | Key-value        | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-redis), [Amazon MemoryDB](https://aws.amazon.com/memorydb/)                                                                                                        |
-| MongoDB    | NoSQL / Document | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-mongodb), [MongoDB Atlas](https://www.mongodb.com/atlas/database)                                                                                                  |
-
-To use one of these, you can use a different [datasource provider](https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#datasource) in your `schema.prisma` file, or a different [SessionStorage adapter package](https://github.com/Shopify/shopify-api-js/blob/main/packages/shopify-api/docs/guides/session-storage.md).
 
 ### Build
 
 Remix handles building the app for you, by running the command below with the package manager of your choice:
-
-Using yarn:
-
-```shell
-yarn build
-```
 
 Using npm:
 
@@ -135,204 +174,81 @@ Using npm:
 npm run build
 ```
 
-Using pnpm:
-
-```shell
-pnpm run build
-```
-
-## Hosting
-
-When you're ready to set up your app in production, you can follow [our deployment documentation](https://shopify.dev/docs/apps/deployment/web) to host your app on a cloud provider like [Heroku](https://www.heroku.com/) or [Fly.io](https://fly.io/).
-
-When you reach the step for [setting up environment variables](https://shopify.dev/docs/apps/deployment/web#set-env-vars), you also need to set the variable `NODE_ENV=production`.
-
-### Hosting on Vercel
-
-Using the Vercel Preset is recommended when hosting your Shopify Remix app on Vercel. You'll also want to ensure imports that would normally come from `@remix-run/node` are imported from `@vercel/remix` instead. Learn more about hosting Remix apps on Vercel [here](https://vercel.com/docs/frameworks/remix).
-
-```diff
-// vite.config.ts
-import { vitePlugin as remix } from "@remix-run/dev";
-import { defineConfig, type UserConfig } from "vite";
-import tsconfigPaths from "vite-tsconfig-paths";
-+ import { vercelPreset } from '@vercel/remix/vite';
-
-installGlobals();
-
-export default defineConfig({
-  plugins: [
-    remix({
-      ignoredRouteFiles: ["**/.*"],
-+     presets: [vercelPreset()],
-    }),
-    tsconfigPaths(),
-  ],
-});
-```
-
-## Troubleshooting
-
-### Database tables don't exist
-
-If you get this error:
-
-```
-The table `main.Session` does not exist in the current database.
-```
-
-You need to create the database for Prisma. Run the `setup` script in `package.json` using your preferred package manager.
-
-### Navigating/redirecting breaks an embedded app
-
-Embedded Shopify apps must maintain the user session, which can be tricky inside an iFrame. To avoid issues:
-
-1. Use `Link` from `@remix-run/react` or `@shopify/polaris`. Do not use `<a>`.
-2. Use the `redirect` helper returned from `authenticate.admin`. Do not use `redirect` from `@remix-run/node`
-3. Use `useSubmit` or `<Form/>` from `@remix-run/react`. Do not use a lowercase `<form/>`.
-
-This only applies if your app is embedded, which it will be by default.
-
-### Non Embedded
-
-Shopify apps are best when they are embedded in the Shopify Admin, which is how this template is configured. If you have a reason to not embed your app please make the following changes:
-
-1. Ensure `embedded = false` is set in [shopify.app.toml`](./shopify.app.toml). [Docs here](https://shopify.dev/docs/apps/build/cli-for-apps/app-configuration#global).
-2. Pass `isEmbeddedApp: false` to `shopifyApp()` in `./app/shopify.server.js|ts`.
-3. Change the `isEmbeddedApp` prop to `isEmbeddedApp={false}` for the `AppProvider` in `/app/routes/app.jsx|tsx`.
-4. Remove the `@shopify/app-bridge-react` dependency from [package.json](./package.json) and `vite.config.ts|js`.
-5. Remove anything imported from `@shopify/app-bridge-react`.  For example: `NavMenu`, `TitleBar` and `useAppBridge`.
-
-### OAuth goes into a loop when I change my app's scopes
-
-If you change your app's scopes and authentication goes into a loop and fails with a message from Shopify that it tried too many times, you might have forgotten to update your scopes with Shopify.
-To do that, you can run the `deploy` CLI command.
-
-Using yarn:
-
-```shell
-yarn deploy
-```
-
-Using npm:
-
-```shell
-npm run deploy
-```
-
-Using pnpm:
-
-```shell
-pnpm run deploy
-```
-
-### My shop-specific webhook subscriptions aren't updated
-
-If you are registering webhooks in the `afterAuth` hook, using `shopify.registerWebhooks`, you may find that your subscriptions aren't being updated.  
-
-Instead of using the `afterAuth` hook, the recommended approach is to declare app-specific webhooks in the `shopify.app.toml` file.  This approach is easier since Shopify will automatically update changes to webhook subscriptions every time you run `deploy` (e.g: `npm run deploy`).  Please read these guides to understand more:
-
-1. [app-specific vs shop-specific webhooks](https://shopify.dev/docs/apps/build/webhooks/subscribe#app-specific-subscriptions)
-2. [Create a subscription tutorial](https://shopify.dev/docs/apps/build/webhooks/subscribe/get-started?framework=remix&deliveryMethod=https)
-
-If you do need shop-specific webhooks, please keep in mind that the package calls `afterAuth` in 2 scenarios:
-
-- After installing the app
-- When an access token expires
-
-During normal development, the app won't need to re-authenticate most of the time, so shop-specific subscriptions aren't updated. To force your app to update the subscriptions, you can uninstall and reinstall it in your development store. That will force the OAuth process and call the `afterAuth` hook.
-
-### Admin created webhook failing HMAC validation
-
-Webhooks subscriptions created in the [Shopify admin](https://help.shopify.com/en/manual/orders/notifications/webhooks) will fail HMAC validation. This is because the webhook payload is not signed with your app's secret key.  There are 2 solutions:
-
-1. Use [app-specific webhooks](https://shopify.dev/docs/apps/build/webhooks/subscribe#app-specific-subscriptions) defined in your toml file instead (recommended)
-2. Create [webhook subscriptions](https://shopify.dev/docs/api/shopify-app-remix/v1/guide-webhooks) using the `shopifyApp` object.
-
-Test your webhooks with the [Shopify CLI](https://shopify.dev/docs/apps/tools/cli/commands#webhook-trigger) or by triggering events manually in the Shopify admin(e.g. Updating the product title to trigger a `PRODUCTS_UPDATE`).
-
-### Incorrect GraphQL Hints
-
-By default the [graphql.vscode-graphql](https://marketplace.visualstudio.com/items?itemName=GraphQL.vscode-graphql) extension for VS Code will assume that GraphQL queries or mutations are for the [Shopify Admin API](https://shopify.dev/docs/api/admin). This is a sensible default, but it may not be true if:
-
-1. You use another Shopify API such as the storefront API.
-2. You use a third party GraphQL API.
-
-in this situation, please update the [.graphqlrc.ts](https://github.com/Shopify/shopify-app-template-remix/blob/main/.graphqlrc.ts) config.
-
-### First parameter has member 'readable' that is not a ReadableStream.
-
-See [hosting on Vercel](#hosting-on-vercel).
-
-### Admin object undefined on webhook events triggered by the CLI
-
-When you trigger a webhook event using the Shopify CLI, the `admin` object will be `undefined`. This is because the CLI triggers an event with a valid, but non-existent, shop. The `admin` object is only available when the webhook is triggered by a shop that has installed the app.
-
-Webhooks triggered by the CLI are intended for initial experimentation testing of your webhook configuration. For more information on how to test your webhooks, see the [Shopify CLI documentation](https://shopify.dev/docs/apps/tools/cli/commands#webhook-trigger).
-
-### Using Defer & await for streaming responses
-
-To test [streaming using defer/await](https://remix.run/docs/en/main/guides/streaming) during local development you'll need to use the Shopify CLI slightly differently:
-
-1. First setup ngrok: https://ngrok.com/product/secure-tunnels
-2. Create an ngrok tunnel on port 8080: `ngrok http 8080`.
-3. Copy the forwarding address. This should be something like: `https://f355-2607-fea8-bb5c-8700-7972-d2b5-3f2b-94ab.ngrok-free.app`
-4. In a separate terminal run `yarn shopify app dev --tunnel-url=TUNNEL_URL:8080` replacing `TUNNEL_URL` for the address you copied in step 3.
-
-By default the CLI uses a cloudflare tunnel. Unfortunately it cloudflare tunnels wait for the Response stream to finish, then sends one chunk.
-
-This will not affect production, since tunnels are only for local development.
-
-### Using MongoDB and Prisma
-
-By default this template uses SQLlite as the database. It is recommended to move to a persisted database for production. If you choose to use MongoDB, you will need to make some modifications to the schema and prisma configuration. For more information please see the [Prisma MongoDB documentation](https://www.prisma.io/docs/orm/overview/databases/mongodb).
-
-Alternatively you can use a MongDB database directly with the [MongoDB session storage adapter](https://github.com/Shopify/shopify-app-js/tree/main/packages/apps/session-storage/shopify-app-session-storage-mongodb).
-
-#### Mapping the id field
-
-In MongoDB, an ID must be a single field that defines an @id attribute and a @map("\_id") attribute.
-The prisma adapter expects the ID field to be the ID of the session, and not the \_id field of the document.
-
-To make this work you can add a new field to the schema that maps the \_id field to the id field. For more information see the [Prisma documentation](https://www.prisma.io/docs/orm/prisma-schema/data-model/models#defining-an-id-field)
-
-```prisma
-model Session {
-  session_id  String    @id @default(auto()) @map("_id") @db.ObjectId
-  id          String    @unique
-...
-}
-```
-
-#### Error: The "mongodb" provider is not supported with this command
-
-MongoDB does not support the [prisma migrate](https://www.prisma.io/docs/orm/prisma-migrate/understanding-prisma-migrate/overview) command. Instead, you can use the [prisma db push](https://www.prisma.io/docs/orm/reference/prisma-cli-reference#db-push) command and update the `shopify.web.toml` file with the following commands. If you are using MongoDB please see the [Prisma documentation](https://www.prisma.io/docs/orm/overview/databases/mongodb) for more information.
-
-```toml
-[commands]
-predev = "npx prisma generate && npx prisma db push"
-dev = "npm exec remix vite:dev"
-```
-
-#### Prisma needs to perform transactions, which requires your mongodb server to be run as a replica set
-
-See the [Prisma documentation](https://www.prisma.io/docs/getting-started/setup-prisma/start-from-scratch/mongodb/connect-your-database-node-mongodb) for connecting to a MongoDB database.
-
-### I want to use Polaris v13.0.0 or higher
-
-Currently, this template is set up to work on node v18.20 or higher. However, `@shopify/polaris` is limited to v12 because v13 can only run on node v20+.
-
-You don't have to make any changes to the code in order to be able to upgrade Polaris to v13, but you'll need to do the following:
-
-- Upgrade your node version to v20.10 or higher.
-- Update your `Dockerfile` to pull `FROM node:20-alpine` instead of `node:18-alpine`
-
-### "nbf" claim timestamp check failed
-
-This error will occur of the `nbf` claim timestamp check failed. This is because the JWT token is expired.
-If you  are consistently getting this error, it could be that the clock on your machine is not in sync with the server.
-
-To fix this ensure you have enabled `Set time and date automatically` in the `Date and Time` settings on your computer.
+## Development Roadmap
+
+This roadmap outlines the features and tasks required to build the AI Image Generator Shopify App.
+
+### Phase 1: Core Functionality
+
+-   [ ] **Dashboard (`/app`)**
+    -   [ ] **Frontend**: Display key stats: current quota usage (generations, storage), recent generations, and quick links.
+    -   [ ] **Backend**: Create a loader to fetch data for the dashboard (`quotasTable`, `generationsTable`).
+
+-   [ ] **Products (`/app/products`)**
+    -   [ ] **Frontend**: List Shopify products using Polaris `IndexTable`. Add a toggle to enable/disable products for AI generation. Link to a product detail page for managing sizes and styles.
+    -   [ ] **Backend**:
+        -   [ ] Loader: Fetch products from Shopify and cross-reference with our `productsTable` to show enabled status.
+        -   [ ] Action: Handle the enable/disable toggle, creating/updating entries in `productsTable`.
+
+-   [ ] **Product-Specific Management (`/app/products/$id`)**
+    -   [ ] **Frontend**: Create a detail page for a single product. This page should have tabs or sections for:
+        -   [ ] **Size Management**: CRUD UI for sizes (`sizesTable`) associated with the product.
+        -   [ ] **Style Management**: CRUD UI for `styleCollectionsTable` and `aiStylesTable` associated with the product.
+    -   [ ] **Backend**:
+        -   [ ] Loaders: Fetch all sizes and style collections for the given product.
+        -   [ ] Actions: Handle all CRUD operations for sizes and styles.
+
+-   [ ] **Settings (`/app/settings`)**
+    -   [ ] **Frontend**:
+        -   [ ] **Watermark**: Build a form to upload a watermark image and configure its settings (opacity, position).
+        -   [ ] **Quotas**: Display current quota limits and usage.
+    -   [ ] **Backend**:
+        -   [ ] Action: Handle watermark image upload (to R2) and update the `watermarksTable`.
+        -   [ ] Loader: Fetch current settings from `watermarksTable` and `quotasTable`.
+
+### Phase 2: Storefront & Generation Flow
+
+-   [ ] **Storefront App Embed (`Theme App Extension`)**
+    -   [ ] **Frontend**: Develop a Preact or vanilla JS component for the App Embed block.
+        -   [ ] Fetch sizes and styles for the current product from a new App Proxy endpoint.
+        -   [ ] Allow customer to upload an image.
+        -   [ ] On form submission, call the backend to generate a preview.
+        -   [ ] Update the cart with the generated preview image and custom properties.
+    -   [ ] **Backend (`/api/generate`)**:
+        -   [ ] Create a new App Proxy route (`/api/generate` or similar).
+        -   [ ] Handle image uploads from the storefront.
+        -   [ ] Queue a "preview" generation job.
+        -   [ ] Return a low-resolution, watermarked image preview.
+
+-   [ ] **Webhooks (`/webhooks`)**
+    -   [ ] **`ORDERS_CREATE`**: Implement the webhook to trigger high-resolution generation.
+        -   [ ] Parse the order to find relevant line items.
+        -   [ ] Create an entry in the `ordersTable`.
+        -   [ ] Enqueue a "final" generation job in Cloudflare Queues.
+    -   [ ] **`APP_UNINSTALLED`**: Implement the webhook to handle app uninstallation (e.g., set `shopsTable.isActive = false`).
+
+-   [ ] **Background Jobs (`Cloudflare Queues`)**
+    -   [ ] **Preview Worker**: Process low-res preview generations.
+    -   [ ] **Final Worker**: Process high-res, non-watermarked final image generations.
+        -   [ ] Update the `generationsTable` with the final image URL and status.
+
+### Phase 3: Management & Analytics
+
+-   [ ] **Generations (`/app/generations`)**
+    -   [ ] **Frontend**: Display a paginated table of all generation records from `generationsTable`. Include status, preview, and links to the product/order.
+    -   [ ] **Backend**: Create a loader to fetch and paginate generations, including related data.
+
+-   [ ] **Orders (`/app/orders`)**
+    -   [ ] **Frontend**: Display a list of Shopify orders that used the AI generator. Link to the final downloadable image.
+    -   [ ] **Backend**: Loader to fetch data from `ordersTable`, cross-referencing with `generationsTable`.
+
+-   [ ] **Analytics (`/app/analytics`)**
+    -   [ ] **Frontend**: Create charts and dashboards to visualize data (e.g., generation counts, popular styles).
+    -   [ ] **Backend**: Create loaders that aggregate data from the database for the analytics view.
+
+-   [ ] **Download Center (`/app/downloads`)**
+    -   [ ] **Frontend**: Provide a simple interface for merchants to search and download their final high-resolution images.
+    -   [ ] **Backend**: Securely serve files from Cloudflare R2.
 
 ## Benefits
 
@@ -359,10 +275,85 @@ This template uses [Remix](https://remix.run). The following Shopify tools are a
 - [Webhooks](https://github.com/Shopify/shopify-app-js/tree/main/packages/shopify-app-remix#authenticating-webhook-requests): Callbacks sent by Shopify when certain events occur
 - [Polaris](https://polaris.shopify.com/): Design system that enables apps to create Shopify-like experiences
 
+## Migration from Prisma to Drizzle ORM
+
+This template has been migrated from Prisma to Drizzle ORM for better performance, smaller bundle size, and Cloudflare D1 compatibility.
+
+### Key Files Changed
+
+#### Database Configuration
+- **`drizzle.config.ts`** - Drizzle configuration for migrations and database connection
+- **`app/db/schema.ts`** - Database schema definition using Drizzle syntax
+- **`app/db.server.ts`** - Database client setup with better-sqlite3 and Drizzle
+- **`app/db/migrations/`** - Generated migration files
+
+#### Session Storage
+- **`app/session-storage.server.ts`** - Custom DrizzleSessionStorage implementation
+- **`app/shopify.server.ts`** - Updated to use DrizzleSessionStorage
+
+#### Configuration Updates  
+- **`package.json`** - Updated dependencies and scripts
+- **`shopify.web.toml`** - Updated predev commands for Drizzle
+- **`.gitignore`** - Updated patterns for Drizzle files
+
+### Important Implementation Notes
+
+#### Session Instance Creation
+The most critical aspect of the migration was ensuring that `loadSession()` returns proper Shopify `Session` class instances rather than plain objects:
+
+```typescript
+// ❌ Wrong - returns plain object (causes session.isActive errors)
+return {
+  id: sessionData.id,
+  shop: sessionData.shop,
+  // ... other properties
+};
+
+// ✅ Correct - returns Session instance with all methods
+return new Session({
+  id: sessionData.id,
+  shop: sessionData.shop,
+  expires: sessionData.expires ? new Date(sessionData.expires) : undefined,
+  // ... other properties
+});
+```
+
+#### Date Handling
+Sessions store expiration as Date objects, but the database stores them as timestamps:
+
+```typescript
+// Storing: Convert Date to timestamp
+expires: session.expires ? new Date(session.expires).getTime() : null
+
+// Loading: Convert timestamp back to Date
+expires: sessionData.expires ? new Date(sessionData.expires) : undefined
+```
+
+### Migration Benefits
+
+1. **Performance**: Faster queries and smaller runtime footprint
+2. **Type Safety**: Compile-time SQL validation and better TypeScript support  
+3. **Bundle Size**: Significantly smaller than Prisma
+4. **Serverless Ready**: Perfect for Cloudflare Workers and D1
+5. **SQL-like**: More familiar syntax for developers who know SQL
+
+### Future Cloudflare D1 Migration
+
+To deploy to Cloudflare D1 in the future:
+
+1. Update `app/db.server.ts` to use D1 bindings in production
+2. Use `wrangler d1 create` to create your D1 database
+3. Run migrations using `wrangler d1 migrations apply`
+4. Deploy with `wrangler deploy`
+
+The current schema and DrizzleSessionStorage implementation is fully compatible with D1.
+
 ## Resources
 
 - [Remix Docs](https://remix.run/docs/en/v1)
 - [Shopify App Remix](https://shopify.dev/docs/api/shopify-app-remix)
+- [Drizzle ORM Documentation](https://drizzle.team/)
+- [Cloudflare D1 Documentation](https://developers.cloudflare.com/d1/)
 - [Introduction to Shopify apps](https://shopify.dev/docs/apps/getting-started)
 - [App authentication](https://shopify.dev/docs/apps/auth)
 - [Shopify CLI](https://shopify.dev/docs/apps/tools/cli)

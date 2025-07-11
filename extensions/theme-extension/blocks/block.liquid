@@ -1,0 +1,68 @@
+{%- comment -%}
+  AI Converter App Block
+  React SDK with App Proxy integration
+  
+  Metafield Constants (keep in sync with app/constants.ts)
+  NAMESPACE: "__aiConverterV1"
+  KEYS: 
+    - AI_ENABLED: "ai_enabled"
+    - LAST_UPDATED: "last_updated"
+    - ENABLE_FOR_ALL_PAGES: "enable_for_all_pages"
+    - ENABLE_ON_CART: "enable_on_cart"
+    - ENABLE_ON_COLLECTION: "enable_on_collection"
+{%- endcomment -%}
+
+{%- assign ai_namespace = "__aiConverterV1" -%}
+{%- assign ai_enabled_key = "ai_enabled" -%}
+{%- assign last_updated_key = "last_updated" -%}
+{%- assign enable_for_all_pages_key = "enable_for_all_pages" -%}
+{%- assign enable_on_cart_key = "enable_on_cart" -%}
+{%- assign enable_on_collection_key = "enable_on_collection" -%}
+
+<!-- Load AI Generator SDK -->
+<script src="{{ 'ai-generator.js' | asset_url }}?v={{ 'now' | date: '%s' }}" defer></script>
+
+<script>
+// AI Generator Configuration - Provide metafield data to React SDK
+(function() {
+    'use strict';
+
+    // Load AI Converter state from metafields for SDK
+    const aiConverterData = {
+        // Product-level settings
+        aiEnabled: {{ product.metafields[ai_namespace][ai_enabled_key].value | json }},
+        lastUpdated: {{ product.metafields[ai_namespace][last_updated_key].value | json }},
+        
+        // Shop-level settings (from shop metafields)
+        enableForAllPages: {{ shop.metafields[ai_namespace][enable_for_all_pages_key].value | json }},
+        enableOnCart: {{ shop.metafields[ai_namespace][enable_on_cart_key].value | json }},
+        enableOnCollection: {{ shop.metafields[ai_namespace][enable_on_collection_key].value | json }},
+        
+        // Current context
+        productId: {{ product.id | json }},
+        productTitle: {{ product.title | json }},
+        shopDomain: {{ shop.permanent_domain | json }}
+    };
+    
+    // Store globally for SDK initialization
+    window.__aiConverterV1 = aiConverterData;
+    
+    // Debug: Log data available to SDK
+    console.log('🎨 AI Converter data provided to SDK:', aiConverterData);
+})();
+</script>
+
+{%- if product.metafields[ai_namespace][ai_enabled_key].value -%}
+    <!-- AI Generation is enabled for this product -->
+    <div class="ai-converter-enabled" style="display: none;" data-product-id="{{ product.id }}" data-ai-enabled="true">
+        AI Generation Available
+    </div>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "AI Converter App",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

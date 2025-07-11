@@ -1,0 +1,1 @@
+ALTER TABLE `aiStyles` DROP COLUMN `negativePrompt`;

@@ -22,7 +22,7 @@ export default function App() {
   return (
     <div className={styles.index}>
       <div className={styles.content}>
-        <h1 className={styles.heading}>Welcome to AI Pet Converter</h1>
+        <h1 className={styles.heading}>Welcome to AI Image Converter</h1>
         <p className={styles.text}>
           Transform your pet photos into stunning wall art with AI-powered poster generation.
         </p>

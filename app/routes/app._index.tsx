@@ -8,8 +8,6 @@ import {
   Card,
   Button,
   BlockStack,
-  Box,
-  List,
   Link,
   InlineStack,
   DataTable,
@@ -20,104 +18,71 @@ import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { APP_NAME } from "../constants";
 import { ProductsList } from "../components/ProductsList";
+import drizzleDb from "../db.server";
+import { generationsTable, type Generation } from "../db/schema";
+import { eq, desc, and, gte } from "drizzle-orm";
 
-// Dummy data for generations
-const dummyGenerations = [
-  {
-    id: "GEN001",
-    customer: "John Doe",
-    petName: "Fluffy",
-    style: "Watercolor",
-    status: "completed",
-    createdAt: "2024-01-15",
-    completedAt: "2024-01-15",
-  },
-  {
-    id: "GEN002", 
-    customer: "Sarah Smith",
-    petName: "Max",
-    style: "Oil Painting",
-    status: "processing",
-    createdAt: "2024-01-16",
-    completedAt: null,
-  },
-  {
-    id: "GEN003",
-    customer: "Mike Johnson", 
-    petName: "Bella",
-    style: "Sketch",
-    status: "completed",
-    createdAt: "2024-01-16",
-    completedAt: "2024-01-16",
-  },
-  {
-    id: "GEN004",
-    customer: "Emily Davis",
-    petName: "Charlie",
-    style: "Pop Art",
-    status: "failed",
-    createdAt: "2024-01-17",
-    completedAt: null,
-  },
-  {
-    id: "GEN005",
-    customer: "David Wilson",
-    petName: "Luna",
-    style: "Realistic",
-    status: "completed",
-    createdAt: "2024-01-17", 
-    completedAt: "2024-01-17",
-  },
-];
-
-// Dummy data for orders
-const dummyOrders = [
-  {
-    id: "ORD001",
-    customer: "John Doe",
-    product: "Fluffy Watercolor Print",
-    amount: "$29.99",
-    status: "fulfilled",
-    orderDate: "2024-01-15",
-  },
-  {
-    id: "ORD002",
-    customer: "Sarah Smith", 
-    product: "Max Oil Painting Print",
-    amount: "$39.99",
-    status: "pending",
-    orderDate: "2024-01-16",
-  },
-  {
-    id: "ORD003",
-    customer: "Mike Johnson",
-    product: "Bella Sketch Print", 
-    amount: "$24.99",
-    status: "fulfilled",
-    orderDate: "2024-01-16",
-  },
-  {
-    id: "ORD004",
-    customer: "David Wilson",
-    product: "Luna Realistic Print",
-    amount: "$34.99", 
-    status: "shipped",
-    orderDate: "2024-01-17",
-  },
-];
-
-// Dummy analytics data
-const analyticsData = {
-  totalGenerations: 156,
-  successfulGenerations: 142,
-  failedGenerations: 14,
-  totalRevenue: 4567.89,
-  averageOrderValue: 32.45,
-  conversionRate: 78.2,
-};
+const DEBUG_REQUESTS = process.env.DEBUG_REQUESTS === 'true' || process.env.NODE_ENV === 'development';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+  
+  if (DEBUG_REQUESTS) {
+    console.log(`[APP_INDEX] Loading dashboard: ${url.pathname} | URL: ${request.url}`);
+    
+    // Log request details before authentication
+    const shopParam = url.searchParams.get('shop');
+    console.log(`[APP_INDEX] Shop from URL params: ${shopParam}`);
+    console.log(`[APP_INDEX] Headers:`, Object.fromEntries(request.headers.entries()));
+  }
+  
   const { admin, session } = await authenticate.admin(request);
+  
+  if (DEBUG_REQUESTS) {
+    // Log session details after authentication
+    console.log(`[APP_INDEX] Session shop: ${session?.shop || 'null'}`);
+    console.log(`[APP_INDEX] Session details:`, {
+      id: session?.id,
+      shop: session?.shop,
+      isOnline: session?.isOnline,
+      expires: session?.expires,
+    });
+  }
+
+  // Get start of current month for filtering
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  
+  // Fetch recent generations for display (limited)
+  const generations = await drizzleDb
+    .select()
+    .from(generationsTable)
+    .where(eq(generationsTable.shopId, session.shop))
+    .orderBy(desc(generationsTable.createdAt))
+    .limit(20);
+
+  // Get all generations for this month for accurate analytics
+  const monthlyGenerations = await drizzleDb
+    .select()
+    .from(generationsTable)
+    .where(
+      and(
+        eq(generationsTable.shopId, session.shop),
+        gte(generationsTable.createdAt, startOfMonth)
+      )
+    );
+
+  // Calculate analytics from this month's data
+  const totalGenerations = monthlyGenerations.length;
+  const successfulGenerations = monthlyGenerations.filter(g => g.status === 'completed').length;
+  const processingGenerations = monthlyGenerations.filter(g => g.status === 'processing' || g.status === 'pending').length;
+  
+  const analyticsData = {
+    totalGenerations,
+    successfulGenerations,
+    processingGenerations,
+    conversionRate: totalGenerations > 0 ? (successfulGenerations / totalGenerations) * 100 : 0,
+  };
 
   const response = await admin.graphql(
     `#graphql
@@ -155,12 +120,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return { 
     products,
-    shop: session.shop 
+    shop: session.shop,
+    generations,
+    analyticsData,
   };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
+
+  // Original product creation logic
   const color = ["Red", "Orange", "Yellow", "Green"][
     Math.floor(Math.random() * 4)
   ];
@@ -229,14 +198,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Index() {
-  const { products, shop } = useLoaderData<typeof loader>();
+  const { products, shop, generations, analyticsData } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
 
   const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-  const productId = fetcher.data?.product?.id.replace(
+  const fetcherData = fetcher.data as any;
+  const productId = fetcherData?.product?.id?.replace(
     "gid://shopify/Product/",
     "",
   );
@@ -246,7 +213,8 @@ export default function Index() {
       shopify.toast.show("Product created");
     }
   }, [productId, shopify]);
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+
+
 
   // Helper function to render status badges
   const renderStatusBadge = (status: string) => {
@@ -263,31 +231,23 @@ export default function Index() {
   };
 
   // Prepare table data for generations
-  const generationsTableRows = dummyGenerations.map((gen) => [
-    gen.id,
-    gen.customer,
-    gen.petName,
-    gen.style,
-    renderStatusBadge(gen.status),
-    gen.createdAt,
-    gen.completedAt || "-",
+  const generationsTableRows = generations.map((gen: Generation) => [
+    gen.id.substring(0, 12) + "...", // Truncate long ID
+    gen.customerId?.replace("gid://shopify/Customer/", "Customer ") || "Anonymous",
+    gen.generationType.charAt(0).toUpperCase() + gen.generationType.slice(1),
+    gen.aiPromptUsed.substring(0, 50) + (gen.aiPromptUsed.length > 50 ? "..." : ""),
+    renderStatusBadge(gen.status || "pending"),
+    new Date(gen.createdAt).toLocaleDateString(),
+    gen.processingTimeMs ? `${(gen.processingTimeMs / 1000).toFixed(1)}s` : "-",
   ]);
 
-  // Prepare table data for orders
-  const ordersTableRows = dummyOrders.map((order) => [
-    order.id,
-    order.customer,
-    order.product,
-    order.amount,
-    renderStatusBadge(order.status),
-    order.orderDate,
-  ]);
+
 
   return (
     <Page>
       <TitleBar title={APP_NAME}>
-        <button variant="primary" onClick={() => window.location.href = '/app/generate'}>
-          Generate a pet print
+        <button variant="primary" onClick={() => window.location.href = '/app/products'}>
+          Enable Products
         </button>
       </TitleBar>
       <BlockStack gap="500">
@@ -299,14 +259,17 @@ export default function Index() {
                   <Text as="h2" variant="headingLg">
                     Welcome to {APP_NAME}
                   </Text>
-                  <Text variant="bodyMd" as="p">
-                    Create beautiful, custom posters of your pets using the power of AI. Simply upload a photo of your furry friend and let our app transform it into stunning wall art that captures their unique personality.
+                  <Text variant="bodyMd" as="p" tone="subdued">
+                    Logged in as: <Text as="span" fontWeight="semibold">{shop}</Text>
                   </Text>
                   <Text variant="bodyMd" as="p">
-                    Get started by clicking the button below to create your first AI-generated pet poster.
+                    Create beautiful, custom posters of your pets using the power of AI. Enable products for pet customization, manage AI styles, and track generation orders.
                   </Text>
-                  <Button variant="primary" url="/app/generate">
-                    Create Pet Print
+                  <Text variant="bodyMd" as="p">
+                    Get started by enabling products for AI pet generation and creating style collections for your customers to choose from.
+                  </Text>
+                  <Button variant="primary" url="/app/products">
+                    Enable Products for AI
                   </Button>
                 </BlockStack>
               </Card>
@@ -314,21 +277,26 @@ export default function Index() {
               {/* Analytics Overview Card */}
               <Card>
                 <BlockStack gap="400">
-                  <Text as="h2" variant="headingLg">
-                    Analytics Overview
-                  </Text>
+                  <InlineStack align="space-between">
+                    <Text as="h2" variant="headingLg">
+                      Analytics Overview
+                    </Text>
+                    <Button url="/app/generations" variant="plain">
+                      View All Generations
+                    </Button>
+                  </InlineStack>
                   <Layout>
                     <Layout.Section variant="oneThird">
                       <Card>
                         <BlockStack gap="200">
                           <Text as="h3" variant="headingMd" tone="subdued">
-                            Total Generations
+                            This Month's Generations
                           </Text>
                           <Text as="p" variant="headingXl">
                             {analyticsData.totalGenerations}
                           </Text>
                           <Text as="p" variant="bodyMd" tone="success">
-                            +12% from last month
+                            {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                           </Text>
                         </BlockStack>
                       </Card>
@@ -340,10 +308,10 @@ export default function Index() {
                             Success Rate
                           </Text>
                           <Text as="p" variant="headingXl">
-                            {((analyticsData.successfulGenerations / analyticsData.totalGenerations) * 100).toFixed(1)}%
+                            {analyticsData.totalGenerations > 0 ? analyticsData.conversionRate.toFixed(1) : '0'}%
                           </Text>
                           <ProgressBar 
-                            progress={(analyticsData.successfulGenerations / analyticsData.totalGenerations) * 100} 
+                            progress={analyticsData.totalGenerations > 0 ? analyticsData.conversionRate : 0} 
                             tone="success"
                           />
                         </BlockStack>
@@ -353,83 +321,16 @@ export default function Index() {
                       <Card>
                         <BlockStack gap="200">
                           <Text as="h3" variant="headingMd" tone="subdued">
-                            Total Revenue
+                            Processing Queue
                           </Text>
                           <Text as="p" variant="headingXl">
-                            ${analyticsData.totalRevenue.toLocaleString()}
+                            {analyticsData.processingGenerations}
                           </Text>
-                          <Text as="p" variant="bodyMd" tone="success">
-                            +8% from last month
+                          <Text as="p" variant="bodyMd">
+                            Currently processing
                           </Text>
                         </BlockStack>
                       </Card>
-                    </Layout.Section>
-                  </Layout>
-                </BlockStack>
-              </Card>
-
-              {/* Simple Charts Section */}
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h2" variant="headingLg">
-                    Generation Statistics
-                  </Text>
-                  <Layout>
-                    <Layout.Section variant="oneHalf">
-                      <BlockStack gap="300">
-                        <Text as="h3" variant="headingMd">
-                          Generation Status Breakdown
-                        </Text>
-                        <Box padding="400" background="bg-surface-secondary" borderRadius="200">
-                          <BlockStack gap="200">
-                            <InlineStack align="space-between">
-                              <Text as="span">Successful</Text>
-                              <Text as="span" tone="success">{analyticsData.successfulGenerations}</Text>
-                            </InlineStack>
-                            <ProgressBar progress={91} tone="success" />
-                            
-                            <InlineStack align="space-between">
-                              <Text as="span">Failed</Text>
-                              <Text as="span" tone="critical">{analyticsData.failedGenerations}</Text>
-                            </InlineStack>
-                            <ProgressBar progress={9} tone="critical" />
-                          </BlockStack>
-                        </Box>
-                      </BlockStack>
-                    </Layout.Section>
-                    <Layout.Section variant="oneHalf">
-                      <BlockStack gap="300">
-                        <Text as="h3" variant="headingMd">
-                          Popular Art Styles
-                        </Text>
-                        <Box padding="400" background="bg-surface-secondary" borderRadius="200">
-                          <BlockStack gap="200">
-                            <InlineStack align="space-between">
-                              <Text as="span">Watercolor</Text>
-                              <Text as="span">35%</Text>
-                            </InlineStack>
-                            <ProgressBar progress={35} />
-                            
-                            <InlineStack align="space-between">
-                              <Text as="span">Oil Painting</Text>
-                              <Text as="span">28%</Text>
-                            </InlineStack>
-                            <ProgressBar progress={28} />
-                            
-                            <InlineStack align="space-between">
-                              <Text as="span">Realistic</Text>
-                              <Text as="span">22%</Text>
-                            </InlineStack>
-                            <ProgressBar progress={22} />
-                            
-                            <InlineStack align="space-between">
-                              <Text as="span">Other</Text>
-                              <Text as="span">15%</Text>
-                            </InlineStack>
-                            <ProgressBar progress={15} />
-                          </BlockStack>
-                        </Box>
-                      </BlockStack>
                     </Layout.Section>
                   </Layout>
                 </BlockStack>
@@ -454,41 +355,13 @@ export default function Index() {
                     headings={[
                       'Generation ID',
                       'Customer',
-                      'Pet Name',
-                      'Style', 
+                      'Type',
+                      'AI Prompt',
                       'Status',
                       'Created',
-                      'Completed',
+                      'Processing Time',
                     ]}
                     rows={generationsTableRows}
-                  />
-                </BlockStack>
-              </Card>
-
-              {/* Recent Orders Table */}
-              <Card>
-                <BlockStack gap="300">
-                  <Text as="h2" variant="headingLg">
-                    Recent Orders
-                  </Text>
-                  <DataTable
-                    columnContentTypes={[
-                      'text',
-                      'text',
-                      'text', 
-                      'text',
-                      'text',
-                      'text',
-                    ]}
-                    headings={[
-                      'Order ID',
-                      'Customer',
-                      'Product',
-                      'Amount',
-                      'Status', 
-                      'Order Date',
-                    ]}
-                    rows={ordersTableRows}
                   />
                 </BlockStack>
               </Card>
@@ -499,111 +372,6 @@ export default function Index() {
                     Your Products
                   </Text>
                   <ProductsList products={products} shop={shop} />
-                </BlockStack>
-              </Card>
-
-              <Card>
-                <BlockStack gap="500">
-                  <BlockStack gap="200">
-                    <Text as="h2" variant="headingMd">
-                      Congrats on creating a new Shopify app 🎉
-                    </Text>
-                    <Text variant="bodyMd" as="p">
-                      This embedded app template uses{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/tools/app-bridge"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        App Bridge
-                      </Link>{" "}
-                      interface examples like an{" "}
-                      <Link url="/app/additional" removeUnderline>
-                        additional page in the app nav
-                      </Link>
-                      , as well as an{" "}
-                      <Link
-                        url="https://shopify.dev/docs/api/admin-graphql"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Admin GraphQL
-                      </Link>{" "}
-                      mutation demo, to provide a starting point for app
-                      development.
-                    </Text>
-                  </BlockStack>
-                  <BlockStack gap="200">
-                    <Text as="h3" variant="headingMd">
-                      Get started with products
-                    </Text>
-                    <Text as="p" variant="bodyMd">
-                      Generate a product with GraphQL and get the JSON output for
-                      that product. Learn more about the{" "}
-                      <Link
-                        url="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        productCreate
-                      </Link>{" "}
-                      mutation in our API references.
-                    </Text>
-                  </BlockStack>
-                  <InlineStack gap="300">
-                    <Button loading={isLoading} onClick={generateProduct}>
-                      Generate a product
-                    </Button>
-                    {fetcher.data?.product && (
-                      <Button
-                        url={`shopify:admin/products/${productId}`}
-                        target="_blank"
-                        variant="plain"
-                      >
-                        View product
-                      </Button>
-                    )}
-                  </InlineStack>
-                  {fetcher.data?.product && (
-                    <>
-                      <Text as="h3" variant="headingMd">
-                        {" "}
-                        productCreate mutation
-                      </Text>
-                      <Box
-                        padding="400"
-                        background="bg-surface-active"
-                        borderWidth="025"
-                        borderRadius="200"
-                        borderColor="border"
-                        overflowX="scroll"
-                      >
-                        <pre style={{ margin: 0 }}>
-                          <code>
-                            {JSON.stringify(fetcher.data.product, null, 2)}
-                          </code>
-                        </pre>
-                      </Box>
-                      <Text as="h3" variant="headingMd">
-                        {" "}
-                        productVariantsBulkUpdate mutation
-                      </Text>
-                      <Box
-                        padding="400"
-                        background="bg-surface-active"
-                        borderWidth="025"
-                        borderRadius="200"
-                        borderColor="border"
-                        overflowX="scroll"
-                      >
-                        <pre style={{ margin: 0 }}>
-                          <code>
-                            {JSON.stringify(fetcher.data.variant, null, 2)}
-                          </code>
-                        </pre>
-                      </Box>
-                    </>
-                  )}
                 </BlockStack>
               </Card>
             </BlockStack>
@@ -633,11 +401,11 @@ export default function Index() {
                         Database
                       </Text>
                       <Link
-                        url="https://www.prisma.io/"
+                        url="https://drizzle.team/"
                         target="_blank"
                         removeUnderline
                       >
-                        Prisma
+                        Drizzle ORM
                       </Link>
                     </InlineStack>
                     <InlineStack align="space-between">
@@ -675,37 +443,6 @@ export default function Index() {
                       </Link>
                     </InlineStack>
                   </BlockStack>
-                </BlockStack>
-              </Card>
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    Next steps
-                  </Text>
-                  <List>
-                    <List.Item>
-                      Build an{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/getting-started/build-app-example"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        {" "}
-                        example app
-                      </Link>{" "}
-                      to get started
-                    </List.Item>
-                    <List.Item>
-                      Explore Shopify's API with{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/tools/graphiql-admin-api"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphiQL
-                      </Link>
-                    </List.Item>
-                  </List>
                 </BlockStack>
               </Card>
             </BlockStack>

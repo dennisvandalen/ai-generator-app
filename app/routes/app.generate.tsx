@@ -53,8 +53,8 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
   try {
     console.log("Starting FAL AI generation with prompt:", prompt);
     
-    // Use placeholder image URL as specified
-    const imageUrl = "https://placecats.com/300/200";
+    // TODO: Replace with actual uploaded pet image URL
+    const imageUrl = "https://placecats.com/300/200"; // Temporary placeholder
     
     // Use FAL AI FLUX Pro Kontext model for image transformation
     const result = await fal.subscribe("fal-ai/flux-pro/kontext", {
@@ -329,22 +329,7 @@ export default function Generate() {
                 </BlockStack>
               </Card>
 
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingMd">
-                    Current Settings
-                  </Text>
-                  <Text variant="bodyMd" as="p" tone="subdued">
-                    Using placeholder cat image for testing
-                  </Text>
-                  <Text variant="bodyMd" as="p" tone="subdued">
-                    Model: FLUX Pro Kontext
-                  </Text>
-                  <Text variant="bodyMd" as="p" tone="subdued">
-                    Output: PNG format, 1:1 aspect ratio
-                  </Text>
-                </BlockStack>
-              </Card>
+
             </BlockStack>
           </Layout.Section>
         </Layout>

@@ -1,0 +1,273 @@
+---
+description: when making new pages or updating the routes
+alwaysApply: false
+---
+# TitleBar Component Rules for Shopify Remix Apps
+
+## Critical Rule: TitleBar in Nested Routes
+
+**NEVER place `TitleBar` components in parent layout routes when using Remix nested routing.**
+
+Each child route MUST define its own `TitleBar` to ensure proper overriding and customization.
+
+## Why This Matters
+
+When a parent layout contains a `TitleBar`, child routes cannot properly override it, causing:
+- Duplicate title bars appearing in the UI
+- Child route titles not displaying correctly  
+- Breadcrumb navigation breaking or not working as expected
+- Poor user experience with conflicting UI elements
+- Component hierarchy issues where child components can't control their own titles
+
+## Implementation Patterns
+
+### ❌ WRONG - Parent Layout with TitleBar
+```tsx
+// app/routes/parent.tsx
+export default function ParentLayout() {
+  return (
+    <Page>
+      <TitleBar title="Parent Title" /> {/* This prevents child override */}
+      <Outlet />
+    </Page>
+  );
+}
+```
+
+### ✅ CORRECT - Child Routes Control TitleBar
+```tsx
+// app/routes/parent.tsx - Parent layout WITHOUT TitleBar
+export default function ParentLayout() {
+  return (
+    <Page>
+      <BlockStack gap="500">
+        <Outlet /> {/* Child routes control their own TitleBar */}
+      </BlockStack>
+    </Page>
+  );
+}
+
+// app/routes/parent._index.tsx - Index route with basic title
+export default function ParentIndex() {
+  return (
+    <>
+      <TitleBar title="Parent List" />
+      {/* List content */}
+    </>
+  );
+}
+
+// app/routes/parent.$id.tsx - Edit route with title and breadcrumbs
+export default function ParentEdit() {
+  const { item } = useLoaderData<typeof loader>();
+  
+  return (
+    <>
+      <TitleBar title={`Edit ${item.name}`}>
+        <Link variant="breadcrumb" to="/app/parent">
+          Parent
+        </Link>
+      </TitleBar>
+      {/* Edit content */}
+    </>
+  );
+}
+```
+
+## TitleBar Best Practices
+
+### 1. Route-Specific Titles
+- **Index routes**: Use descriptive list titles (e.g., "AI Styles", "Products", "Orders")
+- **Edit routes**: Use item-specific titles (e.g., "Edit Vintage Style", "Product: Awesome T-Shirt")
+- **Create routes**: Use action-oriented titles (e.g., "Create New Style", "Add Product")
+
+### 2. Breadcrumb Navigation
+- Always provide breadcrumbs on detail/edit pages
+- Use `<Link variant="breadcrumb" to="/parent/path">Parent Name</Link>` 
+- Ensure breadcrumbs use client-side navigation to prevent re-authentication
+- Breadcrumbs should be semantically meaningful (show the actual parent page name)
+
+### 3. Dynamic Titles
+```tsx
+// ✅ Good - Dynamic titles based on data
+<TitleBar title={`${product.title}`}>
+  <Link variant="breadcrumb" to="/app/products">Products</Link>
+</TitleBar>
+
+// ✅ Good - Conditional titles
+<TitleBar title={isEditing ? `Edit ${style.name}` : "Create New Style"}>
+  {isEditing && (
+    <Link variant="breadcrumb" to="/app/styles">Styles</Link>
+  )}
+</TitleBar>
+```
+
+### 4. Loading States
+```tsx
+// ✅ Handle loading states gracefully
+<TitleBar title={aiStyle ? aiStyle.name : "Loading..."}>
+  <Link variant="breadcrumb" to="/app/styles">Styles</Link>
+</TitleBar>
+```
+
+## Implementation Checklist
+
+When creating new nested routes:
+
+- [ ] Parent layout has NO `TitleBar` component
+- [ ] Index route defines its own `TitleBar` with appropriate title
+- [ ] Edit/detail routes have `TitleBar` with breadcrumb navigation
+- [ ] Breadcrumbs use `Link` component for client-side navigation
+- [ ] Titles are dynamic and descriptive
+- [ ] Loading states are handled appropriately
+
+## Benefits of This Pattern
+
+1. **Proper Component Hierarchy**: Child routes have complete control over their TitleBar
+2. **Flexible Breadcrumbs**: Each route can implement appropriate navigation patterns
+3. **Clean UI**: No duplicate or conflicting title bars
+4. **Maintainable Code**: Clear separation of concerns between layout and content
+5. **Better UX**: Consistent navigation that doesn't break authentication flow
+
+## Real Examples in This Codebase
+
+This pattern is demonstrated in the styles routes:
+- `app/routes/app.styles.tsx`: Parent layout with NO TitleBar
+- `app/routes/app.styles._index.tsx`: Index route with `<TitleBar title="AI Styles" />`
+- `app/routes/app.styles.$id.tsx`: Edit route with dynamic title and breadcrumbs
+
+Always follow this pattern when creating new nested route structures to ensure consistent, professional navigation experiences in Shopify apps. # TitleBar Component Rules for Shopify Remix Apps
+
+## Critical Rule: TitleBar in Nested Routes
+
+**NEVER place `TitleBar` components in parent layout routes when using Remix nested routing.**
+
+Each child route MUST define its own `TitleBar` to ensure proper overriding and customization.
+
+## Why This Matters
+
+When a parent layout contains a `TitleBar`, child routes cannot properly override it, causing:
+- Duplicate title bars appearing in the UI
+- Child route titles not displaying correctly  
+- Breadcrumb navigation breaking or not working as expected
+- Poor user experience with conflicting UI elements
+- Component hierarchy issues where child components can't control their own titles
+
+## Implementation Patterns
+
+### ❌ WRONG - Parent Layout with TitleBar
+```tsx
+// app/routes/parent.tsx
+export default function ParentLayout() {
+  return (
+    <Page>
+      <TitleBar title="Parent Title" /> {/* This prevents child override */}
+      <Outlet />
+    </Page>
+  );
+}
+```
+
+### ✅ CORRECT - Child Routes Control TitleBar
+```tsx
+// app/routes/parent.tsx - Parent layout WITHOUT TitleBar
+export default function ParentLayout() {
+  return (
+    <Page>
+      <BlockStack gap="500">
+        <Outlet /> {/* Child routes control their own TitleBar */}
+      </BlockStack>
+    </Page>
+  );
+}
+
+// app/routes/parent._index.tsx - Index route with basic title
+export default function ParentIndex() {
+  return (
+    <>
+      <TitleBar title="Parent List" />
+      {/* List content */}
+    </>
+  );
+}
+
+// app/routes/parent.$id.tsx - Edit route with title and breadcrumbs
+export default function ParentEdit() {
+  const { item } = useLoaderData<typeof loader>();
+  
+  return (
+    <>
+      <TitleBar title={`Edit ${item.name}`}>
+        <Link variant="breadcrumb" to="/app/parent">
+          Parent
+        </Link>
+      </TitleBar>
+      {/* Edit content */}
+    </>
+  );
+}
+```
+
+## TitleBar Best Practices
+
+### 1. Route-Specific Titles
+- **Index routes**: Use descriptive list titles (e.g., "AI Styles", "Products", "Orders")
+- **Edit routes**: Use item-specific titles (e.g., "Edit Vintage Style", "Product: Awesome T-Shirt")
+- **Create routes**: Use action-oriented titles (e.g., "Create New Style", "Add Product")
+
+### 2. Breadcrumb Navigation
+- Always provide breadcrumbs on detail/edit pages
+- Use `<Link variant="breadcrumb" to="/parent/path">Parent Name</Link>` 
+- Ensure breadcrumbs use client-side navigation to prevent re-authentication
+- Breadcrumbs should be semantically meaningful (show the actual parent page name)
+
+### 3. Dynamic Titles
+```tsx
+// ✅ Good - Dynamic titles based on data
+<TitleBar title={`${product.title}`}>
+  <Link variant="breadcrumb" to="/app/products">Products</Link>
+</TitleBar>
+
+// ✅ Good - Conditional titles
+<TitleBar title={isEditing ? `Edit ${style.name}` : "Create New Style"}>
+  {isEditing && (
+    <Link variant="breadcrumb" to="/app/styles">Styles</Link>
+  )}
+</TitleBar>
+```
+
+### 4. Loading States
+```tsx
+// ✅ Handle loading states gracefully
+<TitleBar title={aiStyle ? aiStyle.name : "Loading..."}>
+  <Link variant="breadcrumb" to="/app/styles">Styles</Link>
+</TitleBar>
+```
+
+## Implementation Checklist
+
+When creating new nested routes:
+
+- [ ] Parent layout has NO `TitleBar` component
+- [ ] Index route defines its own `TitleBar` with appropriate title
+- [ ] Edit/detail routes have `TitleBar` with breadcrumb navigation
+- [ ] Breadcrumbs use `Link` component for client-side navigation
+- [ ] Titles are dynamic and descriptive
+- [ ] Loading states are handled appropriately
+
+## Benefits of This Pattern
+
+1. **Proper Component Hierarchy**: Child routes have complete control over their TitleBar
+2. **Flexible Breadcrumbs**: Each route can implement appropriate navigation patterns
+3. **Clean UI**: No duplicate or conflicting title bars
+4. **Maintainable Code**: Clear separation of concerns between layout and content
+5. **Better UX**: Consistent navigation that doesn't break authentication flow
+
+## Real Examples in This Codebase
+
+This pattern is demonstrated in the styles routes:
+- `app/routes/app.styles.tsx`: Parent layout with NO TitleBar
+- `app/routes/app.styles._index.tsx`: Index route with `<TitleBar title="AI Styles" />`
+- `app/routes/app.styles.$id.tsx`: Edit route with dynamic title and breadcrumbs
+
+Always follow this pattern when creating new nested route structures to ensure consistent, professional navigation experiences in Shopify apps. 

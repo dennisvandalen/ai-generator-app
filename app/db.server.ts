@@ -1,15 +1,25 @@
-import { PrismaClient } from "@prisma/client";
+import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import * as schema from './db/schema';
 
 declare global {
-  var prismaGlobal: PrismaClient;
+  var __db: Database.Database | undefined;
 }
 
-if (process.env.NODE_ENV !== "production") {
-  if (!global.prismaGlobal) {
-    global.prismaGlobal = new PrismaClient();
+let db: Database.Database;
+
+if (process.env.NODE_ENV === 'production') {
+  db = new Database(process.env.DATABASE_URL || './dev.sqlite');
+} else {
+  if (!global.__db) {
+    global.__db = new Database('./dev.sqlite');
   }
+  db = global.__db;
 }
 
-const prisma = global.prismaGlobal ?? new PrismaClient();
+// Enable WAL mode for better performance
+db.pragma('journal_mode = WAL');
 
-export default prisma;
+export const drizzleDb = drizzle(db, { schema });
+
+export default drizzleDb;
