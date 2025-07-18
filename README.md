@@ -1,16 +1,18 @@
-
-
-cloudflared tunnel --url http://localhost:3000
-
-npm run dev -- --tunnel-url=https://criminal-beat-buf-abilities.trycloudflare.com:3000
-
-
 ### Local Development
 
-Using npm:
+Running with coudflare tunnel: 
 
-```shell
-npm run dev
+```bash
+cloudflared tunnel --url http://localhost:3000
+npm run dev -- --tunnel-url=https://criminal-beat-buf-abilities.trycloudflare.com:3000
+```
+
+Running with Expose:
+
+```bash
+npm run dev:extension
+expose share --subdomain=ai-app http://localhost:3000
+npm run dev -- --tunnel-url=https://ai-app.eu-1.sharedwithexpose.com:3000
 ```
 
 Press P to open the URL to your app. Once you click install, you can start development.

@@ -129,13 +129,14 @@ export function addHiddenFields(generationState: any): void {
   }
 
   // Only add fields if generation is selected
-  if (generationState.generationSelected && generationState.generationId) {
-    // Line item property for cart display (shows in cart/checkout)
-    const lineItemField = document.createElement('input');
-    lineItemField.type = 'hidden';
-    lineItemField.name = 'properties[AI Generation ID]';
-    lineItemField.value = generationState.generationId;
-    form.appendChild(lineItemField);
+  if (generationState.generationSelected && generationState.imageUrl) {
+    const imageUrlField = document.createElement('input');
+    imageUrlField.type = 'hidden';
+    imageUrlField.name = 'properties[_ai_generated_image]';
+    imageUrlField.value = generationState.imageUrl;
+    form.appendChild(imageUrlField);
+
+    console.log('✅ Added hidden AI generated image field:', imageUrlField.name, imageUrlField.value);
 
     // Internal tracking field (for form validation)
     const trackingField = document.createElement('input');
@@ -202,7 +203,7 @@ export function createButtonsOverlay(): void {
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       white-space: nowrap;
     ">
-      🎨 Select AI first
+      🎨 Upload and select an image first
     </div>
   `;
 
@@ -224,13 +225,130 @@ export function removeButtonsOverlay(): void {
   }
 }
 
+export function preventFormSubmission(): void {
+  const form = findProductForm();
+  if (!form) return;
+
+  // Add event listener to prevent form submission
+  const preventSubmit = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('🚫 Form submission prevented - no AI generation selected');
+    
+    // Show a brief notification
+    const container = findButtonsContainer();
+    if (container) {
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #ff4444;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        z-index: 20;
+        box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3);
+        animation: pulse 0.5s ease;
+      `;
+      notification.textContent = '🎨 Please select AI generation first';
+      container.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 2000);
+    }
+    
+    return false;
+  };
+
+  // Store the function reference for later removal
+  form.setAttribute('data-ai-prevention-active', 'true');
+  (form as any).__aiPreventSubmit = preventSubmit;
+  
+  // Add listeners for all possible submission methods
+  form.addEventListener('submit', preventSubmit, true);
+  
+  // Also prevent Enter key submissions in form inputs
+  const inputs = form.querySelectorAll('input, select, textarea');
+  inputs.forEach(input => {
+    input.addEventListener('keydown', (e: Event) => {
+      const keyEvent = e as KeyboardEvent;
+      if (keyEvent.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        preventSubmit(e);
+      }
+    });
+  });
+  
+  console.log('🚫 Form submission prevention activated');
+}
+
+export function removeFormSubmissionPrevention(): void {
+  const form = findProductForm();
+  if (!form) return;
+
+  const preventSubmit = (form as any).__aiPreventSubmit;
+  if (preventSubmit) {
+    form.removeEventListener('submit', preventSubmit, true);
+    delete (form as any).__aiPreventSubmit;
+    form.removeAttribute('data-ai-prevention-active');
+    
+    // Remove Enter key prevention from inputs
+    const inputs = form.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+      // Clone node to remove all event listeners
+      const newInput = input.cloneNode(true);
+      input.parentNode?.replaceChild(newInput, input);
+    });
+    
+    console.log('✅ Form submission prevention removed');
+  }
+}
+
+export function disableFormInputs(): void {
+  const form = findProductForm();
+  if (!form) return;
+
+  const inputs = form.querySelectorAll('input:not([type="hidden"]), select, textarea, button');
+  inputs.forEach((input: Element) => {
+    const element = input as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement;
+    element.disabled = true;
+    element.style.opacity = '0.5';
+    element.style.cursor = 'not-allowed';
+  });
+  
+  console.log('🔒 Form inputs disabled');
+}
+
+export function enableFormInputs(): void {
+  const form = findProductForm();
+  if (!form) return;
+
+  const inputs = form.querySelectorAll('input:not([type="hidden"]), select, textarea, button');
+  inputs.forEach((input: Element) => {
+    const element = input as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement;
+    element.disabled = false;
+    element.style.opacity = '';
+    element.style.cursor = '';
+  });
+  
+  console.log('🔓 Form inputs enabled');
+}
+
 export function updateGenerationState(
   generationSelected: boolean, 
-  generationId: string | null = null
+  generationId: string | null = null,
+  imageUrl: string | null = null
 ): any {
   const generationState = {
     generationSelected,
     generationId,
+    imageUrl,
     isInitialized: true
   };
 
@@ -240,11 +358,17 @@ export function updateGenerationState(
   // Update hidden fields
   addHiddenFields(generationState);
 
-  // Update button overlay
+  // Update form behavior based on generation state
   if (generationSelected) {
+    // Enable form when AI generation is selected
     removeButtonsOverlay();
+    removeFormSubmissionPrevention();
+    enableFormInputs();
   } else {
+    // Disable form when no AI generation is selected
     createButtonsOverlay();
+    preventFormSubmission();
+    disableFormInputs();
   }
 
   // Dispatch custom event to notify React components immediately

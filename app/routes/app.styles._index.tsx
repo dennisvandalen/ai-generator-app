@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit, useActionData, Link } from "@remix-run/react";
+import { useLoaderData, useSubmit, useActionData, Link, useNavigate } from "@remix-run/react";
 import {
   Layout,
   Text,
@@ -38,6 +38,7 @@ type FormValues = z.infer<typeof AiStyleSchema>;
 type ActionData = {
   errors?: z.ZodError<FormValues>['formErrors']['fieldErrors'];
   success?: boolean;
+  uuid?: string;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -68,17 +69,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const { name, promptTemplate, exampleImageUrl } = result.data;
 
+  const uuid = crypto.randomUUID();
   await db.insert(aiStylesTable).values({
-    uuid: crypto.randomUUID(),
+    uuid,
     shopId: shopId,
     name,
     promptTemplate,
     exampleImageUrl: exampleImageUrl || null,
+    isActive: false, // Set isActive to false by default
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
 
-  return json({ success: true });
+  return json({ success: true, uuid });
 };
 
 export default function StylesIndexPage() {
@@ -101,12 +104,19 @@ export default function StylesIndexPage() {
     submit(data, { method: 'post' });
   };
 
+  const navigate = useNavigate();
+
   useEffect(() => {
-    if (actionData?.success) {
+    if (actionData?.success && actionData.uuid) {
+      reset();
+      setIsModalOpen(false);
+      // Navigate to the newly created style's page using useNavigate
+      navigate(`/app/styles/${actionData.uuid}`);
+    } else if (actionData?.success) {
       reset();
       setIsModalOpen(false);
     }
-  }, [actionData, reset]);
+  }, [actionData, reset, navigate]);
 
   const toggleModal = useCallback(() => {
     setIsModalOpen((active) => {

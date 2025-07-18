@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "053320f3-0ab4-49fd-a4df-a10d5ec179ae",
-  "prevId": "f2dafd7c-b495-409e-89eb-dde16726c5d6",
+  "id": "d663db40-3859-444c-8f65-54f519e35029",
+  "prevId": "1fddad6f-5c8b-4b53-a4a2-8028d685451c",
   "tables": {
     "aiStyles": {
       "name": "aiStyles",
@@ -142,13 +142,6 @@
         },
         "productId": {
           "name": "productId",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sizeId": {
-          "name": "sizeId",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -375,19 +368,6 @@
           "tableTo": "products",
           "columnsFrom": [
             "productId"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "generations_sizeId_sizes_id_fk": {
-          "name": "generations_sizeId_sizes_id_fk",
-          "tableFrom": "generations",
-          "tableTo": "sizes",
-          "columnsFrom": [
-            "sizeId"
           ],
           "columnsTo": [
             "id"

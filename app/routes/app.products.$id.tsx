@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useNavigate, useSubmit, useActionData, Link } from "@remix-run/react";
+import { useLoaderData, useNavigate, useSubmit, useActionData, useRevalidator, Link } from "@remix-run/react";
 import {
   Layout,
   Text,
@@ -17,9 +17,10 @@ import {
 } from "@shopify/polaris";
 import { ArrowLeftIcon, ImageIcon } from "@shopify/polaris-icons";
 import { TitleBar, SaveBar, useAppBridge } from "@shopify/app-bridge-react";
+import { useForm, useField, asChoiceField } from "@shopify/react-form";
 import { authenticate } from "../shopify.server";
 import drizzleDb from "../db.server";
-import { productsTable, sizesTable, aiStylesTable, type Product, type Size, type AiStyle } from "../db/schema";
+import { productsTable, sizesTable, aiStylesTable, productStylesTable, type Product, type Size, type AiStyle, type ProductStyle } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { getShopId } from "../utils/getShopId";
 import { useState, useCallback, useEffect } from "react";
@@ -260,6 +261,33 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     .from(aiStylesTable)
     .where(eq(aiStylesTable.shopId, shopId));
 
+  // Fetch product-style relationships from database
+  const productStyles = await drizzleDb
+    .select({
+      id: productStylesTable.id,
+      aiStyleId: productStylesTable.aiStyleId,
+      sortOrder: productStylesTable.sortOrder,
+      isEnabled: productStylesTable.isEnabled,
+      aiStyle: {
+        id: aiStylesTable.id,
+        uuid: aiStylesTable.uuid,
+        name: aiStylesTable.name,
+        exampleImageUrl: aiStylesTable.exampleImageUrl,
+        isActive: aiStylesTable.isActive,
+      }
+    })
+    .from(productStylesTable)
+    .leftJoin(aiStylesTable, eq(productStylesTable.aiStyleId, aiStylesTable.id))
+    .where(eq(productStylesTable.productId, product.id))
+    .orderBy(productStylesTable.sortOrder);
+
+  // Extract selected styles (enabled ones) with ordering
+  const selectedStyles = productStyles
+    .filter(ps => ps.isEnabled)
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+    .map(ps => ps.aiStyle?.uuid || '')
+    .filter(uuid => uuid);
+
   return json({
     product: {
       ...product,
@@ -268,6 +296,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     shopifyProduct,
     sizes,
     aiStyles,
+    productStyles,
+    selectedStyles,
     shop: session.shop,
     updateNeeded,
   });
@@ -286,6 +316,27 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (action === "toggle_enabled") {
     const isEnabled = formData.get("isEnabled") === "true";
+    const selectedStylesJson = formData.get("selectedStyles");
+    const reorderedStylesJson = formData.get("reorderedStyles");
+    
+    let selectedStyles: string[] = [];
+    let reorderedStyles: Array<{ uuid: string; sortOrder: number }> = [];
+    
+    if (selectedStylesJson) {
+      try {
+        selectedStyles = JSON.parse(selectedStylesJson as string);
+      } catch (error) {
+        console.error("Error parsing selectedStyles:", error);
+      }
+    }
+
+    if (reorderedStylesJson) {
+      try {
+        reorderedStyles = JSON.parse(reorderedStylesJson as string);
+      } catch (error) {
+        console.error("Error parsing reorderedStyles:", error);
+      }
+    }
 
     try {
       // Update our database
@@ -297,7 +348,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         })
         .where(eq(productsTable.uuid, id));
 
-      // Get the product from our database to get the Shopify product ID
+      // Get the product from our database to get the numeric ID
       const dbProduct = await drizzleDb
         .select()
         .from(productsTable)
@@ -305,10 +356,59 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         .limit(1);
 
       if (dbProduct.length > 0) {
+        const productId = dbProduct[0].id;
         const shopifyGID = `gid://shopify/Product/${dbProduct[0].shopifyProductId}`;
         const currentDate = new Date().toISOString();
 
-        // Update metafields on the Shopify product
+        // Get all AI styles for this shop to map UUIDs to IDs
+        const shopId = getShopId(session.shop);
+        const aiStyles = await drizzleDb
+          .select()
+          .from(aiStylesTable)
+          .where(eq(aiStylesTable.shopId, shopId));
+
+        const styleUuidToId = new Map(aiStyles.map(style => [style.uuid, style.id]));
+
+        // First, delete all existing product-style relationships for this product
+        await drizzleDb
+          .delete(productStylesTable)
+          .where(eq(productStylesTable.productId, productId));
+
+        // Then, insert new relationships for selected styles
+        if (selectedStyles.length > 0) {
+          const currentTime = new Date().toISOString();
+          
+          // Create product-style relationships with proper ordering
+          const productStylesToInsert = [];
+          
+          for (let index = 0; index < selectedStyles.length; index++) {
+            const styleUuid = selectedStyles[index];
+            const styleId = styleUuidToId.get(styleUuid);
+            
+            if (styleId) {
+              // Check if we have reordered data for this style
+              const reorderedStyle = reorderedStyles.find(rs => rs.uuid === styleUuid);
+              const sortOrder = reorderedStyle ? reorderedStyle.sortOrder : index;
+
+              productStylesToInsert.push({
+                productId: productId,
+                aiStyleId: styleId,
+                sortOrder: sortOrder,
+                isEnabled: true,
+                createdAt: currentTime,
+                updatedAt: currentTime,
+              });
+            }
+          }
+
+          if (productStylesToInsert.length > 0) {
+            await drizzleDb
+              .insert(productStylesTable)
+              .values(productStylesToInsert);
+          }
+        }
+
+        // Update metafields on the Shopify product (only basic info, not styles)
         const metafieldsInput = {
           id: shopifyGID,
           metafields: [
@@ -342,7 +442,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       return json<ActionData>({
         success: true,
-        message: `Product ${isEnabled ? 'enabled' : 'disabled'} for AI generation`
+        message: `Product ${isEnabled ? 'enabled' : 'disabled'} for AI generation with ${selectedStyles.length} style(s) selected`
       });
     } catch (error) {
       console.error("Error updating product status:", error);
@@ -354,73 +454,140 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function ProductDetailPage() {
-  const { product, shopifyProduct, sizes, aiStyles, shop, updateNeeded } = useLoaderData<typeof loader>();
+  const { product, shopifyProduct, sizes, aiStyles, productStyles, selectedStyles: initialSelectedStyles, shop, updateNeeded } = useLoaderData<typeof loader>();
   const actionData = useActionData<ActionData>();
   const navigate = useNavigate();
   const submit = useSubmit();
-  const [isEnabled, setIsEnabled] = useState(product.isEnabled ?? false);
-  const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
-  const [isDirty, setIsDirty] = useState(false);
+  const revalidator = useRevalidator();
   const [isSaving, setIsSaving] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const [shouldResetForm, setShouldResetForm] = useState(false);
+  const [draggedItem, setDraggedItem] = useState<string | null>(null);
+  const [draggedOverItem, setDraggedOverItem] = useState<string | null>(null);
   const shopify = isClient ? useAppBridge() : null;
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
+  // Initialize form with @shopify/react-form
+  const {
+    fields: {
+      isEnabled,
+      selectedStyles,
+    },
+    submit: submitForm,
+    submitting,
+    dirty,
+    reset,
+  } = useForm({
+    fields: {
+      isEnabled: useField(product.isEnabled ?? false),
+      selectedStyles: useField<string[]>(initialSelectedStyles || []),
+    },
+    onSubmit: async (fieldValues) => {
+      setIsSaving(true);
+      const formData = new FormData();
+      formData.append("action", "toggle_enabled");
+      formData.append("isEnabled", fieldValues.isEnabled.toString());
+      formData.append("selectedStyles", JSON.stringify(fieldValues.selectedStyles));
+      
+      // Include reordered styles data with sort order
+      const reorderedStyles = fieldValues.selectedStyles.map((styleUuid, index) => ({
+        uuid: styleUuid,
+        sortOrder: index,
+      }));
+      formData.append("reorderedStyles", JSON.stringify(reorderedStyles));
+      
+      submit(formData, { method: "post" });
+      return { status: 'success' };
+    },
+  });
+
+  // Combined loading state for better UX
+  const isLoading = submitting || isSaving || revalidator.state === "loading";
+
   const handleBackClick = () => {
     navigate("/app/products");
   };
 
-  const handleToggleEnabled = useCallback((checked: boolean) => {
-    setIsEnabled(checked);
-    setIsDirty(true);
+  const handleStyleToggle = useCallback((styleId: string, checked: boolean) => {
+    const currentStyles = selectedStyles.value;
+    if (checked) {
+      selectedStyles.onChange([...currentStyles, styleId]);
+    } else {
+      selectedStyles.onChange(currentStyles.filter(id => id !== styleId));
+    }
+  }, [selectedStyles]);
+
+  const handleDragStart = useCallback((e: React.DragEvent, styleUuid: string) => {
+    setDraggedItem(styleUuid);
+    e.dataTransfer.effectAllowed = 'move';
   }, []);
 
-  const handleStyleToggle = useCallback((styleId: string, checked: boolean) => {
-    setSelectedStyles(prev => {
-      if (checked) {
-        return [...prev, styleId];
-      } else {
-        return prev.filter(id => id !== styleId);
-      }
-    });
-    setIsDirty(true);
+  const handleDragOver = useCallback((e: React.DragEvent, styleUuid: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDraggedOverItem(styleUuid);
   }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDraggedOverItem(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetStyleUuid: string) => {
+    e.preventDefault();
+    
+    if (!draggedItem || draggedItem === targetStyleUuid) {
+      setDraggedItem(null);
+      setDraggedOverItem(null);
+      return;
+    }
+
+    const currentStyles = selectedStyles.value;
+    const draggedIndex = currentStyles.findIndex(uuid => uuid === draggedItem);
+    const targetIndex = currentStyles.findIndex(uuid => uuid === targetStyleUuid);
+
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      const newStyles = [...currentStyles];
+      const [draggedStyle] = newStyles.splice(draggedIndex, 1);
+      newStyles.splice(targetIndex, 0, draggedStyle);
+      selectedStyles.onChange(newStyles);
+    }
+
+    setDraggedItem(null);
+    setDraggedOverItem(null);
+  }, [draggedItem, selectedStyles]);
 
   const handleSave = useCallback(() => {
-    setIsSaving(true);
-    const formData = new FormData();
-    formData.append("action", "toggle_enabled");
-    formData.append("isEnabled", isEnabled.toString());
-    submit(formData, { method: "post" });
-  }, [isEnabled, submit]);
+    submitForm();
+  }, [submitForm]);
 
   const handleDiscard = useCallback(() => {
-    setIsEnabled(product.isEnabled ?? false);
-    setIsDirty(false);
-  }, [product.isEnabled]);
+    reset();
+  }, [reset]);
 
   // Show/hide save bar based on changes
   useEffect(() => {
     if (shopify) {
-      if (isDirty && !isSaving) {
+      if (dirty || isLoading) {
         shopify.saveBar.show('product-edit-save-bar');
       } else {
         shopify.saveBar.hide('product-edit-save-bar');
       }
     }
-  }, [isDirty, isSaving, shopify]);
+  }, [dirty, isLoading, shopify]);
 
   // Handle successful save
   useEffect(() => {
     if (actionData && 'success' in actionData && actionData.success && isSaving) {
-      setIsDirty(false);
       setIsSaving(false);
+      setShouldResetForm(true); // Flag that we should reset form after revalidation
       if (shopify) {
         shopify.toast.show(actionData.message, { duration: 3000 });
       }
+      // Revalidate to refresh the data and sync form state
+      revalidator.revalidate();
     } else if (actionData && 'error' in actionData && actionData.error && isSaving) {
       setIsSaving(false);
       // Show error toast if shopify is available
@@ -428,7 +595,17 @@ export default function ProductDetailPage() {
         shopify.toast.show(actionData.error, { duration: 5000, isError: true });
       }
     }
-  }, [actionData, isSaving, shopify]);
+  }, [actionData, isSaving, shopify, revalidator]);
+
+  // Reset form when revalidation completes with fresh data (only after successful save)
+  useEffect(() => {
+    if (shouldResetForm && revalidator.state === "idle" && isSaving === false) {
+      // Reset the form with the updated data from the loader
+      isEnabled.onChange(product.isEnabled ?? false);
+      selectedStyles.onChange(initialSelectedStyles || []);
+      setShouldResetForm(false); // Clear the flag
+    }
+  }, [shouldResetForm, revalidator.state, isSaving, product.isEnabled, initialSelectedStyles]);
 
   const variants = shopifyProduct?.variants?.edges?.map(edge => edge.node) || [];
 
@@ -533,6 +710,7 @@ export default function ProductDetailPage() {
                 variant="tertiary"
                 onClick={handleBackClick}
                 icon={ArrowLeftIcon}
+                disabled={isLoading}
               >
                 Back to Products
               </Button>
@@ -551,8 +729,8 @@ export default function ProductDetailPage() {
                       </Text>
 
                       <InlineStack gap="300">
-                        <Badge tone={isEnabled ? "success" : "attention"}>
-                          {isEnabled ? "AI Enabled" : "AI Disabled"}
+                        <Badge tone={isEnabled.value ? "success" : "attention"}>
+                          {isEnabled.value ? "AI Enabled" : "AI Disabled"}
                         </Badge>
                         {shopifyProduct?.status && (
                           <Badge tone={shopifyProduct.status === 'ACTIVE' ? "success" : "attention"}>
@@ -563,27 +741,30 @@ export default function ProductDetailPage() {
 
                       <Checkbox
                         label="Enable for AI Generation"
-                        checked={isEnabled}
-                        onChange={handleToggleEnabled}
+                        checked={isEnabled.value}
+                        onChange={isEnabled.onChange}
                         helpText="When enabled, customers can generate AI art for this product."
+                        error={isEnabled.error}
+                        disabled={isLoading}
                       />
 
-                                             <BlockStack gap="200">
-                         <Text variant="bodyMd" as="dt" fontWeight="semibold">
-                           Shopify Product ID
-                         </Text>
-                         <Text variant="bodyMd" as="dd">
-                           {product.shopifyProductId}
-                         </Text>
-                       </BlockStack>
+                      <BlockStack gap="200">
+                        <Text variant="bodyMd" as="dt" fontWeight="semibold">
+                          Shopify Product ID
+                        </Text>
+                        <Text variant="bodyMd" as="dd">
+                          {product.shopifyProductId}
+                        </Text>
+                      </BlockStack>
 
-                       <InlineStack gap="300">
+                                             <InlineStack gap="300">
                          {shopifyProduct && (
                            <Button 
                              variant="secondary"
                              size="slim"
                              url={`https://${shop}/products/${shopifyProduct.handle}`}
                              target="_blank"
+                             disabled={isLoading}
                            >
                              View in Shop
                            </Button>
@@ -594,6 +775,7 @@ export default function ProductDetailPage() {
                              size="slim"
                              url={`https://${shop}/admin/products/${product.shopifyProductId}`}
                              target="_blank"
+                             disabled={isLoading}
                            >
                              Edit in Shopify
                            </Button>
@@ -615,27 +797,124 @@ export default function ProductDetailPage() {
                       <Text variant="bodyMd" as="p" tone="subdued">
                         Select which AI styles are available for this product. Customers will be able to choose from the selected styles when generating images.
                       </Text>
+                      
+                      {selectedStyles.value.length > 0 && (
+                        <Text variant="bodySm" as="p" tone="subdued">
+                          💡 <strong>Selected styles appear first and are numbered in order.</strong> Drag and drop to reorder them - this controls the order customers see when generating images.
+                        </Text>
+                      )}
 
                       <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
                         gap: '16px'
                       }}>
-                        {aiStyles.map((style: AiStyle) => {
-                          const isSelected = selectedStyles.includes(style.uuid);
+                        {/* Show selected styles first, in order */}
+                        {selectedStyles.value.map((styleUuid, index) => {
+                          const style = aiStyles.find(s => s.uuid === styleUuid);
+                          if (!style) return null;
+                          
+                          const isDragging = draggedItem === styleUuid;
+                          const isDraggedOver = draggedOverItem === styleUuid;
+                          
                           return (
                             <div
-                              key={style.id}
-                              onClick={() => handleStyleToggle(style.uuid, !isSelected)}
+                              key={`selected-${style.id}`}
+                              draggable={!isLoading}
+                              onDragStart={(e) => handleDragStart(e, styleUuid)}
+                              onDragOver={(e) => handleDragOver(e, styleUuid)}
+                              onDragLeave={handleDragLeave}
+                              onDrop={(e) => handleDrop(e, styleUuid)}
+                              onClick={isLoading ? undefined : () => handleStyleToggle(style.uuid, false)}
                               style={{
-                                cursor: 'pointer',
+                                cursor: isLoading ? 'not-allowed' : 'grab',
                                 transition: 'all 0.15s ease',
-                                transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+                                transform: isDragging ? 'scale(1.05)' : 'scale(1.02)',
+                                opacity: isLoading ? 0.6 : (isDragging ? 0.8 : 1),
+                                border: isDraggedOver ? '2px dashed #0066cc' : 'none',
+                                position: 'relative',
                               }}
                             >
                               <div style={{ position: 'relative' }}>
                                 <Card
-                                  background={isSelected ? "bg-surface-selected" : "bg-surface-secondary"}
+                                  background="bg-surface-selected"
+                                  padding="300"
+                                >
+                                  <InlineStack gap="300" align="start" blockAlign="center">
+                                    <div style={{ 
+                                      backgroundColor: '#0066cc', 
+                                      color: 'white', 
+                                      borderRadius: '50%', 
+                                      width: '24px', 
+                                      height: '24px', 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      justifyContent: 'center', 
+                                      fontSize: '12px', 
+                                      fontWeight: 'bold',
+                                      flexShrink: 0
+                                    }}>
+                                      {index + 1}
+                                    </div>
+                                    {style.exampleImageUrl && (
+                                      <div style={{ flexShrink: 0 }}>
+                                        <Thumbnail
+                                          source={style.exampleImageUrl}
+                                          alt={style.name}
+                                          size="small"
+                                        />
+                                      </div>
+                                    )}
+                                    <BlockStack gap="100">
+                                      <Text variant="bodyMd" fontWeight="semibold" as="span">
+                                        {style.name}
+                                      </Text>
+                                      <div style={{ alignSelf: 'flex-start' }}>
+                                        <Badge
+                                          tone={style.isActive ? "success" : "critical"}
+                                          size="small"
+                                        >
+                                          {style.isActive ? "Active" : "Inactive"}
+                                        </Badge>
+                                      </div>
+                                    </BlockStack>
+                                  </InlineStack>
+                                </Card>
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '12px',
+                                  right: '12px',
+                                  zIndex: 1
+                                }}>
+                                  <Checkbox
+                                    label={`Disable ${style.name} for this product`}
+                                    labelHidden
+                                    checked={true}
+                                    onChange={() => handleStyleToggle(style.uuid, false)}
+                                    disabled={isLoading}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        
+                        {/* Show unselected styles */}
+                        {aiStyles.filter(style => !selectedStyles.value.includes(style.uuid)).map((style: AiStyle) => {
+                          return (
+                            <div
+                              key={`unselected-${style.id}`}
+                              onClick={isLoading ? undefined : () => handleStyleToggle(style.uuid, true)}
+                              style={{
+                                cursor: isLoading ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.15s ease',
+                                transform: 'scale(1)',
+                                opacity: isLoading ? 0.6 : 1,
+                              }}
+                            >
+                              <div style={{ position: 'relative' }}>
+                                <Card
+                                  background="bg-surface-secondary"
                                   padding="300"
                                 >
                                   <InlineStack gap="300" align="start" blockAlign="center">
@@ -672,8 +951,9 @@ export default function ProductDetailPage() {
                                   <Checkbox
                                     label={`Enable ${style.name} for this product`}
                                     labelHidden
-                                    checked={isSelected}
-                                    onChange={(checked) => handleStyleToggle(style.uuid, checked)}
+                                    checked={false}
+                                    onChange={() => handleStyleToggle(style.uuid, true)}
+                                    disabled={isLoading}
                                   />
                                 </div>
                               </div>
@@ -684,13 +964,14 @@ export default function ProductDetailPage() {
 
                       <InlineStack gap="200" align="space-between">
                         <Text variant="bodySm" tone="subdued" as="span">
-                          {selectedStyles.length} of {aiStyles.length} styles selected
+                          {selectedStyles.value.length} of {aiStyles.length} styles selected
                         </Text>
-                        {selectedStyles.length > 0 && (
+                        {selectedStyles.value.length > 0 && (
                           <Button
                             variant="plain"
                             size="slim"
-                            onClick={() => setSelectedStyles([])}
+                            onClick={() => selectedStyles.onChange([])}
+                            disabled={isLoading}
                           >
                             Clear all
                           </Button>
@@ -702,7 +983,7 @@ export default function ProductDetailPage() {
                       <Text variant="bodyMd" tone="subdued" as="p">
                         No AI styles have been created yet.
                       </Text>
-                      <Button variant="primary" url="/app/styles">
+                      <Button variant="primary" url="/app/styles" disabled={isLoading}>
                         Create AI Styles
                       </Button>
                     </BlockStack>
@@ -759,14 +1040,14 @@ export default function ProductDetailPage() {
                     Quick Actions
                   </Text>
 
-                                    <InlineStack gap="300">
-                    <Button variant="secondary">
+                  <InlineStack gap="300">
+                    <Button variant="secondary" disabled={isLoading}>
                       Manage Sizes
                     </Button>
-                    <Button variant="secondary">
+                    <Button variant="secondary" disabled={isLoading}>
                       View Analytics
                     </Button>
-                    <Button variant="secondary">
+                    <Button variant="secondary" disabled={isLoading}>
                       Configure AI Styles
                     </Button>
                   </InlineStack>
@@ -782,14 +1063,14 @@ export default function ProductDetailPage() {
         <button
           variant="primary"
           onClick={handleSave}
-          loading={isSaving ? "" : undefined}
-          disabled={isSaving}
+          loading={isLoading ? "" : undefined}
+          disabled={isLoading}
         >
-          Save Changes
+          {isLoading ? "Saving..." : "Save Changes"}
         </button>
         <button
           onClick={handleDiscard}
-          disabled={isSaving}
+          disabled={isLoading}
         >
           Discard
         </button>

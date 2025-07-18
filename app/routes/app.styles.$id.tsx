@@ -368,19 +368,9 @@ export default function EditStylePage() {
                       )}
                     />
 
-                    <Controller
-                      name="isActive"
-                      control={control}
-                      render={({ field: { value, onChange, ...field } }) => (
-                        <Checkbox
-                          {...field}
-                          label="Active"
-                          checked={value}
-                          onChange={onChange}
-                          helpText="Active styles are available for customers to choose from."
-                        />
-                      )}
-                    />
+                    <BlockStack gap="200">
+                    
+                  </BlockStack>
                   </FormLayout>
                 </BlockStack>
               </Card>
@@ -404,12 +394,22 @@ export default function EditStylePage() {
 
                 <BlockStack gap="200">
                   <Text as="span" variant="bodyMd" tone="subdued">
-                    Status:
+                    Status: <Badge tone={aiStyle.isActive ? "success" : undefined}>{aiStyle.isActive ? "Active" : "Draft"}</Badge>
                   </Text>
-                  <Badge tone={aiStyle.isActive ? "success" : undefined}>
-                    {aiStyle.isActive ? "Active" : "Draft"}
-                  </Badge>
                 </BlockStack>
+                <Controller
+                  name="isActive"
+                  control={control}
+                  render={({ field: { value, onChange, ...field } }) => (
+                    <Checkbox
+                      {...field}
+                      label="Active"
+                      checked={value}
+                      onChange={onChange}
+                      helpText="Active styles are available for customers to choose from."
+                    />
+                  )}
+                />
 
                 <BlockStack gap="200">
                   <Text as="span" variant="bodyMd" tone="subdued">

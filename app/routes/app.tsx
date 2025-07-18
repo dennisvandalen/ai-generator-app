@@ -38,6 +38,9 @@ export default function App() {
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
       <NavMenu>
+        <Link to="/app/productbase">
+          Productbase
+        </Link>
         <Link to="/app/products">
           Products
         </Link>
@@ -60,6 +63,7 @@ export default function App() {
           Settings
         </Link>
       </NavMenu>
+      
       <div style={{paddingBottom: "100px"}}>
         <Outlet />
       </div>

@@ -11,8 +11,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   pageType,
   isThemeEditor
 }) => {
-  const [isVisible, setIsVisible] = useState(true);
-  const [autoHideTimeout, setAutoHideTimeout] = useState<NodeJS.Timeout | null>(null);
   const [generationState, setGenerationState] = useState(() => 
     (window as any).__aiGenerationState || { generationSelected: false, generationId: null, isInitialized: false }
   );
@@ -30,46 +28,18 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
     };
   }, []);
 
-  // useEffect(() => {
-  //   // Auto-hide after 10 seconds unless hovered
-  //   const timeout = setTimeout(() => {
-  //     setIsVisible(false);
-  //   }, 10000);
-  //   setAutoHideTimeout(timeout);
-
-  //   return () => {
-  //     if (timeout) clearTimeout(timeout);
-  //   };
-  // }, []);
-
-  const handleMouseEnter = () => {
-    if (autoHideTimeout) {
-      clearTimeout(autoHideTimeout);
-      setAutoHideTimeout(null);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    const timeout = setTimeout(() => {
-      setIsVisible(false);
-    }, 5000);
-    setAutoHideTimeout(timeout);
-  };
-
   const aiStatus = aiConverterData.aiEnabled === true ? '✅ ENABLED' : 
                   aiConverterData.aiEnabled === false ? '❌ DISABLED' : 
                   '⚠️ NOT SET';
 
   const hasLineItem = generationState.generationSelected && generationState.generationId;
 
-  if (!isVisible) return null;
-
   return (
     <div
       style={{
         position: 'fixed',
         bottom: '20px',
-        right: '20px',
+        left: '20px',
         background: 'rgba(0, 0, 0, 0.9)',
         color: 'white',
         padding: '12px 16px',
@@ -81,8 +51,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
         backdropFilter: 'blur(10px)',
         border: '1px solid rgba(255, 255, 255, 0.2)',
       }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       <div style={{ color: '#00ff88', fontWeight: 'bold', marginBottom: '8px' }}>
         🤖 AI Generator Debug
@@ -112,23 +80,6 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
           <strong>Updated:</strong> {new Date(aiConverterData.lastUpdated).toLocaleDateString()}
         </div>
       )}
-      
-      <button
-        onClick={() => setIsVisible(false)}
-        style={{
-          position: 'absolute',
-          top: '5px',
-          right: '8px',
-          background: 'none',
-          border: 'none',
-          color: 'white',
-          cursor: 'pointer',
-          fontSize: '16px',
-          lineHeight: '1',
-        }}
-      >
-        ×
-      </button>
     </div>
   );
 }; 

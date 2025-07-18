@@ -7,6 +7,7 @@
   KEYS: 
     - AI_ENABLED: "ai_enabled"
     - LAST_UPDATED: "last_updated"
+    - SELECTED_STYLES: "selected_styles"
     - ENABLE_FOR_ALL_PAGES: "enable_for_all_pages"
     - ENABLE_ON_CART: "enable_on_cart"
     - ENABLE_ON_COLLECTION: "enable_on_collection"
@@ -20,6 +21,7 @@
 {%- assign enable_on_collection_key = "enable_on_collection" -%}
 
 <!-- Load AI Generator SDK -->
+<link href="{{ 'ai-generator.css' | asset_url }}" rel="stylesheet" />
 <script src="{{ 'ai-generator.js' | asset_url }}?v={{ 'now' | date: '%s' }}" defer></script>
 
 <script>

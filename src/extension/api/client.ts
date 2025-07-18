@@ -90,4 +90,51 @@ export class AIGeneratorAPI {
       throw error;
     }
   }
+
+  async uploadImage(base64Image: string, filename: string): Promise<string> {
+    try {
+      const response = await fetch(`${this.baseURL}/upload-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64Image, filename }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to upload image: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.url;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create an AI generation using the selected style and uploaded image URL
+   * @param {Object} params - { styleId, imageUrl, ... }
+   * @returns {Promise<any>} Generation result or polling promise
+   */
+  async createAIGeneration(params: { styleId: string; imageUrl: string; [key: string]: any }): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseURL}/generations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to create AI generation: ${response.status}`);
+      }
+      const result = await response.json();
+      // Optionally poll for completion if result.id is present (like createGeneration)
+      if (result.id) {
+        return this.pollForCompletion(result.id);
+      }
+      return result;
+    } catch (error) {
+      console.error('Error creating AI generation:', error);
+      throw error;
+    }
+  }
 } 

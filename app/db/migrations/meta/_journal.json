@@ -33,8 +33,22 @@
     {
       "idx": 4,
       "version": "6",
-      "when": 1752067652958,
-      "tag": "0004_exotic_the_fury",
+      "when": 1752305294525,
+      "tag": "0004_thin_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1752593286668,
+      "tag": "0005_fancy_moira_mactaggert",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1752593367129,
+      "tag": "0006_aromatic_zaran",
       "breakpoints": true
     }
   ]

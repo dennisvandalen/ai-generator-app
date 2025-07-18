@@ -284,6 +284,32 @@ export default function ProductsIndexPage() {
                         <BlockStack gap="300">
                           <BlockStack gap="200">
                             <Text variant="headingSm" as="h4">
+                              Create New Product
+                            </Text>
+                            <Text variant="bodySm" tone="subdued" as="p">
+                              Create a brand new product specifically designed for AI pet customization.
+                            </Text>
+                          </BlockStack>
+                          <Button 
+                            variant="primary" 
+                            onClick={handleCreateNewProduct}
+                            loading={isSubmitting}
+                            disabled={isSubmitting}
+                            size="large"
+                            fullWidth
+                            icon={PlusIcon}
+                          >
+                            Create New Product
+                          </Button>
+                        </BlockStack>
+                      </Card>
+                    </Layout.Section>
+
+                    <Layout.Section variant="oneHalf">
+                      <Card>
+                        <BlockStack gap="300">
+                          <BlockStack gap="200">
+                            <Text variant="headingSm" as="h4">
                               Select Existing Product
                             </Text>
                             <Text variant="bodySm" tone="subdued" as="p">
@@ -291,7 +317,7 @@ export default function ProductsIndexPage() {
                             </Text>
                           </BlockStack>
                           <Button 
-                            variant="primary" 
+                            variant="secondary"
                             onClick={handleProductSelection}
                             loading={isSubmitting || fetcher.state === "submitting"}
                             disabled={isSubmitting || fetcher.state === "submitting"}
@@ -315,31 +341,6 @@ export default function ProductsIndexPage() {
                       </Card>
                     </Layout.Section>
 
-                    <Layout.Section variant="oneHalf">
-                      <Card>
-                        <BlockStack gap="300">
-                          <BlockStack gap="200">
-                            <Text variant="headingSm" as="h4">
-                              Create New Product
-                            </Text>
-                            <Text variant="bodySm" tone="subdued" as="p">
-                              Create a brand new product specifically designed for AI pet customization.
-                            </Text>
-                          </BlockStack>
-                          <Button 
-                            variant="secondary" 
-                            onClick={handleCreateNewProduct}
-                            loading={isSubmitting}
-                            disabled={isSubmitting}
-                            size="large"
-                            fullWidth
-                            icon={PlusIcon}
-                          >
-                            Create New Product
-                          </Button>
-                        </BlockStack>
-                      </Card>
-                    </Layout.Section>
                   </Layout>
                 </BlockStack>
               </BlockStack>

@@ -3,7 +3,7 @@
 client_id = "dabfce4798337ee21f0a8970fb76757f"
 name = "[DEV] AI Pet Converter"
 handle = "ai-generator-app"
-application_url = "https://sick-functioning-entire-austria.trycloudflare.com"
+application_url = "https://ai-app.eu-1.sharedwithexpose.com"
 embedded = true
 
 [build]
@@ -26,14 +26,12 @@ api_version = "2025-07"
 scopes = "write_products,write_orders,read_themes,write_app_proxy"
 
 [auth]
-redirect_urls = ["https://sick-functioning-entire-austria.trycloudflare.com/auth/callback", "https://sick-functioning-entire-austria.trycloudflare.com/auth/shopify/callback", "https://sick-functioning-entire-austria.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://ai-app.eu-1.sharedwithexpose.com/auth/callback", "https://ai-app.eu-1.sharedwithexpose.com/auth/shopify/callback", "https://ai-app.eu-1.sharedwithexpose.com/api/auth/callback"]
 
 [pos]
 embedded = false
 
 [app_proxy]
-url = "https://sick-functioning-entire-austria.trycloudflare.com"
+url = "https://ai-app.eu-1.sharedwithexpose.com"
 prefix = "tools"
 subpath = "ai-studio"
-
-# npm run dev -- --tunnel-url=https://sick-functioning-entire-austria.trycloudflare.com

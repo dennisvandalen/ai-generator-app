@@ -82,7 +82,7 @@ export const generationsTable = sqliteTable('generations', {
   id: text('id').primaryKey(), // UUID
   shopId: text('shopId').notNull().references(() => shopsTable.id, { onDelete: 'cascade' }),
   productId: integer('productId').notNull().references(() => productsTable.id, { onDelete: 'cascade' }),
-  sizeId: integer('sizeId').notNull().references(() => sizesTable.id, { onDelete: 'cascade' }),
+  
   aiStyleId: integer('aiStyleId').notNull().references(() => aiStylesTable.id, { onDelete: 'cascade' }),
   orderId: text('orderId'), // Shopify order GID (null for previews)
   customerId: text('customerId'), // Shopify customer GID
@@ -171,6 +171,21 @@ export const quotasTable = sqliteTable('quotas', {
   uniqueIndex('quotas_shop_unique').on(table.shopId),
 ]);
 
+// Junction table for product-style relationships with ordering
+export const productStylesTable = sqliteTable('productStyles', {
+  id: integer('id', { mode: 'number' }).primaryKey({ autoIncrement: true }),
+  productId: integer('productId').notNull().references(() => productsTable.id, { onDelete: 'cascade' }),
+  aiStyleId: integer('aiStyleId').notNull().references(() => aiStylesTable.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sortOrder').default(0), // For reordering styles
+  isEnabled: integer('isEnabled', { mode: 'boolean' }).default(true), // 0 = disabled, 1 = enabled
+  createdAt: text('createdAt').notNull(), // ISO timestamp
+  updatedAt: text('updatedAt').notNull(), // ISO timestamp
+}, (table) => [
+  uniqueIndex('product_styles_product_style_unique').on(table.productId, table.aiStyleId),
+  index('product_styles_product_id_idx').on(table.productId),
+  index('product_styles_ai_style_id_idx').on(table.aiStyleId),
+]);
+
 // ===== RELATIONS =====
 
 export const shopsRelations = relations(shopsTable, ({ many, one }) => ({
@@ -187,7 +202,7 @@ export const productsRelations = relations(productsTable, ({ one, many }) => ({
     references: [shopsTable.id],
   }),
   sizes: many(sizesTable),
-  aiStyles: many(aiStylesTable),
+  productStyles: many(productStylesTable),
   generations: many(generationsTable),
 }));
 
@@ -204,7 +219,19 @@ export const aiStylesRelations = relations(aiStylesTable, ({ one, many }) => ({
     fields: [aiStylesTable.shopId],
     references: [shopsTable.id],
   }),
+  productStyles: many(productStylesTable),
   generations: many(generationsTable),
+}));
+
+export const productStylesRelations = relations(productStylesTable, ({ one }) => ({
+  product: one(productsTable, {
+    fields: [productStylesTable.productId],
+    references: [productsTable.id],
+  }),
+  aiStyle: one(aiStylesTable, {
+    fields: [productStylesTable.aiStyleId],
+    references: [aiStylesTable.id],
+  }),
 }));
 
 export const generationsRelations = relations(generationsTable, ({ one }) => ({
@@ -216,10 +243,7 @@ export const generationsRelations = relations(generationsTable, ({ one }) => ({
     fields: [generationsTable.productId],
     references: [productsTable.id],
   }),
-  size: one(sizesTable, {
-    fields: [generationsTable.sizeId],
-    references: [sizesTable.id],
-  }),
+  
   aiStyle: one(aiStylesTable, {
     fields: [generationsTable.aiStyleId],
     references: [aiStylesTable.id],
@@ -261,3 +285,6 @@ export type NewWatermark = typeof watermarksTable.$inferInsert;
 
 export type Quota = typeof quotasTable.$inferSelect;
 export type NewQuota = typeof quotasTable.$inferInsert;
+
+export type ProductStyle = typeof productStylesTable.$inferSelect;
+export type NewProductStyle = typeof productStylesTable.$inferInsert;
