@@ -55,6 +55,9 @@ class AIGeneratorSDK {
       await this.initCartPage();
     }
 
+    // Initialize cart notification watcher on all pages (cart notifications can appear anywhere)
+    this.initCartNotificationWatcher();
+
     // Add debug panel if there's relevant data
     if (this.aiConverterData.productId || this.pageType === 'product' || this.aiConverterData.enableForAllPages) {
       this.showDebugPanel();
@@ -110,6 +113,7 @@ class AIGeneratorSDK {
     // Initial update
     this.updateCartImages();
 
+    // Watch for main cart changes
     const cartItemsNode = document.getElementById('main-cart-items');
     if (cartItemsNode) {
       console.log('✅ Attaching MutationObserver to #main-cart-items');
@@ -128,6 +132,46 @@ class AIGeneratorSDK {
     }
   }
 
+  initCartNotificationWatcher() {
+    console.log('🛒 Initializing cart notification watcher...');
+
+    // Watch for cart notification appearance
+    const observer = new MutationObserver((mutationsList) => {
+      for(let mutation of mutationsList) {
+        if (mutation.type === 'childList') {
+          // Check if cart notification was added
+          const cartNotification = document.querySelector('#cart-notification');
+          if (cartNotification && cartNotification.classList.contains('active')) {
+            console.log('🛒 Cart notification appeared, updating images...');
+            // Small delay to ensure the notification is fully rendered
+            setTimeout(() => this.updateCartImages(), 100);
+          }
+        }
+      }
+    });
+
+    // Watch the entire document body for cart notification changes
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Also watch for cart notification visibility changes
+    const cartNotification = document.querySelector('#cart-notification');
+    if (cartNotification) {
+      const visibilityObserver = new MutationObserver((mutationsList) => {
+        for(let mutation of mutationsList) {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+            const target = mutation.target as HTMLElement;
+            if (target.classList.contains('active')) {
+              console.log('🛒 Cart notification became active, updating images...');
+              setTimeout(() => this.updateCartImages(), 100);
+            }
+          }
+        }
+      });
+
+      visibilityObserver.observe(cartNotification, { attributes: true, attributeFilter: ['class'] });
+    }
+  }
+
   async updateCartImages(cart = null) {
     try {
       const cartData = cart || await (await fetch('/cart.js')).json();
@@ -137,36 +181,112 @@ class AIGeneratorSDK {
         return;
       }
 
+      // First, handle cart notification separately to avoid conflicts
+      this.updateCartNotificationImage(cartData);
+
+      // Then handle main cart page and other cart implementations
       cartData.items.forEach((item: any) => {
         console.log('🛒 updateCartImages: Processing item:', item.key, 'with properties:', item.properties);
         if (item.properties && item.properties._ai_generated_image) {
           const aiImageUrl = item.properties._ai_generated_image;
           console.log('🛒 updateCartImages: AI generated image URL for item', item.key, ':', aiImageUrl);
 
-          // Find the cart item row using the item.key from the cart data
-          // The item.key is typically part of the href in the cart-item__link
+          // 1. Update main cart page images
           const cartItemRow = document.querySelector(`.cart-item:has(a[href*="${item.key}"])`) as HTMLElement;
-
           if (cartItemRow) {
             console.log('🛒 updateCartImages: Found cart item row for item key:', item.key, cartItemRow);
             const imgElement = cartItemRow.querySelector('.cart-item__image') as HTMLImageElement;
-
             if (imgElement) {
               console.log('🛒 updateCartImages: Found image element within row for item key:', item.key, imgElement);
               imgElement.setAttribute('src', aiImageUrl);
-              console.log('🛒 updateCartImages: Image src updated for item', item.key, 'to:', aiImageUrl);
+              console.log('🛒 updateCartImages: Main cart image src updated for item', item.key, 'to:', aiImageUrl);
             } else {
               console.log('🛒 updateCartImages: Could not find image element within row for item key:', item.key);
             }
           } else {
             console.log('🛒 updateCartImages: Could not find cart item row for item key:', item.key);
           }
+
+          // 2. Update any other cart-related images (like mini cart, drawer cart, etc.)
+          // Look for any img elements that might be cart-related and contain the item key
+          const allCartImages = document.querySelectorAll('img[src*="cdn/shop"], img[src*="myshopify"]') as NodeListOf<HTMLImageElement>;
+          allCartImages.forEach((img) => {
+            // Check if this image is likely related to the current cart item
+            // This is a fallback for other cart implementations
+            const parentElement = img.closest('[data-cart-item], .cart-item, .cart-drawer-item, .mini-cart-item');
+            if (parentElement && parentElement.textContent?.includes(item.key)) {
+              console.log('🛒 updateCartImages: Found additional cart image for item key:', item.key, img);
+              img.setAttribute('src', aiImageUrl);
+              console.log('🛒 updateCartImages: Additional cart image src updated for item', item.key, 'to:', aiImageUrl);
+            }
+          });
+
         } else {
           console.log('🛒 updateCartImages: Item', item.key, 'does not have _ai_generated_image property.');
         }
       });
     } catch (error) {
       console.error('Error updating cart images:', error);
+    }
+  }
+
+  updateCartNotificationImage(cartData: any) {
+    console.log('🛒 updateCartNotificationImage: Processing cart notification...');
+
+    const cartNotificationProduct = document.querySelector('#cart-notification-product') as HTMLElement;
+    if (!cartNotificationProduct) {
+      console.log('🛒 updateCartNotificationImage: No cart notification product found.');
+      return;
+    }
+
+    // Try to identify which item the cart notification is showing
+    // Method 1: Check the product name in the notification
+    const notificationProductName = cartNotificationProduct.querySelector('.cart-notification-product__name')?.textContent?.trim();
+    console.log('🛒 updateCartNotificationImage: Notification product name:', notificationProductName);
+
+    // Method 2: Check if there's a specific item key or variant ID in the notification
+    const notificationImgElement = cartNotificationProduct.querySelector('img') as HTMLImageElement;
+    if (!notificationImgElement) {
+      console.log('🛒 updateCartNotificationImage: No notification image element found.');
+      return;
+    }
+
+    // Find the most recently added item with AI generation
+    // Cart notifications typically show the most recently added item
+    const aiGeneratedItems = cartData.items.filter((item: any) =>
+      item.properties && item.properties._ai_generated_image
+    );
+
+    if (aiGeneratedItems.length === 0) {
+      console.log('🛒 updateCartNotificationImage: No AI generated items found in cart.');
+      return;
+    }
+
+    // Get the most recent AI generated item (last in the array)
+    const mostRecentAiItem = aiGeneratedItems[aiGeneratedItems.length - 1];
+    const aiImageUrl = mostRecentAiItem.properties._ai_generated_image;
+
+    console.log('🛒 updateCartNotificationImage: Most recent AI item:', mostRecentAiItem.key, 'with image:', aiImageUrl);
+
+    // Update the notification image
+    notificationImgElement.setAttribute('src', aiImageUrl);
+    console.log('🛒 updateCartNotificationImage: Cart notification image updated to:', aiImageUrl);
+
+    // Additional check: If the notification product name matches a specific item, use that instead
+    if (notificationProductName) {
+      const matchingItem = cartData.items.find((item: any) => {
+        // Try to match by product title or variant title
+        const itemTitle = item.product_title || item.variant_title || '';
+        return itemTitle.toLowerCase().includes(notificationProductName.toLowerCase()) ||
+               notificationProductName.toLowerCase().includes(itemTitle.toLowerCase());
+      });
+
+      if (matchingItem && matchingItem.properties && matchingItem.properties._ai_generated_image) {
+        const matchingAiImageUrl = matchingItem.properties._ai_generated_image;
+        console.log('🛒 updateCartNotificationImage: Found matching item by name:', matchingItem.key, 'with image:', matchingAiImageUrl);
+        notificationImgElement.setAttribute('src', matchingAiImageUrl);
+        console.log('🛒 updateCartNotificationImage: Cart notification image updated to matching item:', matchingAiImageUrl);
+      }
     }
   }
 
@@ -232,7 +352,7 @@ class AIGeneratorSDK {
           onError={(error: unknown) => {
             console.error('AI Generator error:', error);
           }}
-          onUpdateGenerationState={(generationSelected, generationId, imageUrl) => 
+          onUpdateGenerationState={(generationSelected, generationId, imageUrl) =>
             updateGenerationState(generationSelected, generationId, imageUrl)
           }
         />
@@ -373,4 +493,4 @@ declare global {
   }
 }
 
-export { AIGeneratorSDK }; 
+export { AIGeneratorSDK };

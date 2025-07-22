@@ -1,16 +1,38 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import type {LoaderFunctionArgs} from "@remix-run/node";
 import drizzleDb from "../db.server";
-import { productsTable, sizesTable, aiStylesTable, productStylesTable } from "../db/schema";
-import { eq, and } from "drizzle-orm";
-import { getShopId } from "../utils/getShopId";
-import { authenticate } from "../shopify.server";
+import {
+  productsTable,
+  aiStylesTable,
+  productStylesTable,
+  productBaseVariantsTable,
+  productBaseVariantMappingsTable
+} from "~/db/schema";
+import {eq, and} from "drizzle-orm";
+import {getShopId} from "~/utils/getShopId";
+import {authenticate} from "~/shopify.server";
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { id } = params;
-  
+// Define types for product styles data
+interface AiStyle {
+  id: number;
+  uuid: string;
+  name: string;
+  promptTemplate: string;
+  exampleImageUrl: string | null;
+  isActive: boolean | null;
+}
+
+interface ProductStyle {
+  id: number;
+  sortOrder: number | null;
+  isEnabled: boolean | null;
+  aiStyle: AiStyle | null;
+}
+
+export const loader = async ({request, params}: LoaderFunctionArgs) => {
+  const {id} = params;
+
   if (!id) {
-    return json({ error: "Product ID is required" }, { status: 400 });
+    return Response.json({error: "Product ID is required"}, {status: 400});
   }
 
   let shop: string | null = null;
@@ -21,14 +43,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const url = new URL(request.url);
     shop = url.searchParams.get("shop");
     if (!shop) {
-      return json({ error: "Shop parameter is required (dev mode)" }, { status: 400 });
+      return Response.json({error: "Shop parameter is required (dev mode)"}, {status: 400});
     }
     shopId = getShopId(shop);
   } else {
     // In prod, use Shopify app proxy authentication
-    const { session } = await authenticate.public.appProxy(request);
+    const {session} = await authenticate.public.appProxy(request);
     if (!session?.shop) {
-      return json({ error: "Shopify authentication failed" }, { status: 401 });
+      return Response.json({error: "Shopify authentication failed"}, {status: 401});
     }
     shop = session.shop;
     shopId = getShopId(shop);
@@ -46,14 +68,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       .limit(1);
 
     if (product.length === 0) {
-      return json({ error: "Product not found or not enabled for AI generation" }, { status: 404 });
+      return Response.json({error: "Product not found or not enabled for AI generation"}, {status: 404});
     }
 
     const productData = product[0];
 
     // If product is not enabled, return minimal data
     if (!productData.isEnabled) {
-      return json({
+      return Response.json({
         enabled: false,
         message: "AI generation is not enabled for this product"
       });
@@ -82,35 +104,61 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       ))
       .orderBy(productStylesTable.sortOrder);
 
-    // Filter out inactive styles and sort by order
+    console.log('productStyles', productStyles)
+
+    // Filter out null styles and inactive styles, then sort by order
     const availableStyles = productStyles
-      .filter((ps: any) => ps.aiStyle?.isActive)
-      .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0))
-      .map((ps: any) => ({
-        id: ps.aiStyle!.uuid,
-        name: ps.aiStyle!.name,
-        // promptTemplate: ps.aiStyle!.promptTemplate,
-        exampleImageUrl: ps.aiStyle!.exampleImageUrl,
-        order: ps.sortOrder || 0,
-      }));
-
-    // Fetch available sizes for this product
-    const sizes = await drizzleDb
-      .select({
-        id: sizesTable.uuid,
-        name: sizesTable.name,
-        widthPx: sizesTable.widthPx,
-        heightPx: sizesTable.heightPx,
-        sortOrder: sizesTable.sortOrder,
+      .filter((ps: ProductStyle) => {
+        // Ensure aiStyle exists and is active before including it
+        return ps && ps.aiStyle && typeof ps.aiStyle === 'object' && ps.aiStyle.isActive === true;
       })
-      .from(sizesTable)
-      .where(and(
-        eq(sizesTable.productId, productData.id),
-        eq(sizesTable.isActive, true)
-      ))
-      .orderBy(sizesTable.sortOrder);
+      .sort((a: ProductStyle, b: ProductStyle) => (a.sortOrder || 0) - (b.sortOrder || 0))
+      .map((ps: ProductStyle) => {
+        // Double-check that aiStyle exists before accessing its properties
+        if (!ps.aiStyle) {
+          return {
+            id: null,
+            name: null,
+            exampleImageUrl: null,
+            order: ps.sortOrder || 0,
+          };
+        }
+        return {
+          id: ps.aiStyle.uuid,
+          name: ps.aiStyle.name,
+          exampleImageUrl: ps.aiStyle.exampleImageUrl,
+          order: ps.sortOrder || 0,
+        };
+      });
 
-    return json({
+    // Fetch product variant mappings with their dimensions
+    const variantMappings = await drizzleDb
+      .select({
+        shopifyVariantId: productBaseVariantMappingsTable.shopifyVariantId,
+        productBaseVariantId: productBaseVariantMappingsTable.productBaseVariantId,
+        widthPx: productBaseVariantsTable.widthPx,
+        heightPx: productBaseVariantsTable.heightPx
+      })
+      .from(productBaseVariantMappingsTable)
+      .leftJoin(
+        productBaseVariantsTable,
+        eq(productBaseVariantMappingsTable.productBaseVariantId, productBaseVariantsTable.id)
+      )
+      .where(and(
+        eq(productBaseVariantMappingsTable.productId, productData.id),
+        eq(productBaseVariantMappingsTable.isActive, true)
+      ));
+
+    // Format variant data for response
+    const variants = variantMappings.map(mapping => ({
+      variantId: mapping.shopifyVariantId,
+      dimensions: {
+        width: mapping.widthPx,
+        height: mapping.heightPx
+      }
+    }));
+
+    return Response.json({
       enabled: true,
       product: {
         id: productData.shopifyProductId,
@@ -118,16 +166,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         uuid: productData.uuid,
       },
       styles: availableStyles,
-      sizes: sizes,
+      variants: variants,
       config: {
         totalStyles: availableStyles.length,
-        totalSizes: sizes.length,
         lastUpdated: productData.updatedAt,
       }
     });
 
   } catch (error) {
     console.error("Error fetching product data:", error);
-    return json({ error: "Internal server error" }, { status: 500 });
+    return Response.json({error: "Internal server error"}, {status: 500});
   }
-}; 
+};

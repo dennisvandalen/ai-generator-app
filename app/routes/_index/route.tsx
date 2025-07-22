@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { Form, useLoaderData } from "@remix-run/react";
 
-import { login } from "../../shopify.server";
+import { login } from "~/shopify.server";
 
 import styles from "./styles.module.css";
 
@@ -27,7 +27,7 @@ export default function App() {
           Transform your pet photos into stunning wall art with AI-powered poster generation.
         </p>
         {showForm && (
-          <Form className={styles.form} method="post" action="/auth/login">
+          <Form className={styles.form} method="post" action={"/auth/login"}>
             <label className={styles.label}>
               <span>Shop domain</span>
               <input className={styles.input} type="text" name="shop" />

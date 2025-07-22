@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
-import { useState, useCallback } from "react";
+
+import { useLoaderData, useFetcher, useNavigate, useLocation } from "@remix-run/react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Layout,
   Text,
@@ -13,13 +13,16 @@ import {
   Thumbnail,
   IndexTable,
   Badge,
+  Page,
+  Select,
+  ChoiceList,
 } from "@shopify/polaris";
 import { PlusIcon, StoreIcon, ImageIcon } from "@shopify/polaris-icons";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+import { authenticate } from "~/shopify.server";
 import drizzleDb from "../db.server";
-import { productsTable, type Product, type NewProduct } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { productsTable, type Product, type NewProduct } from "~/db/schema";
+import {asc, desc, eq} from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 // Types for the selected product from Resource Picker
@@ -36,23 +39,73 @@ interface ShopifyProduct {
   productType: string;
 }
 
-type ActionData = 
+type ActionData =
   | { error: string; success?: undefined; message?: undefined }
   | { success: true; message: string; error?: undefined };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  
-  // Fetch AI-enabled products from database
-  const products = await drizzleDb
+  const url = new URL(request.url);
+
+  let sortField = 'isEnabled';
+  let sortDirection = 'desc';
+  let statusFilter = null;
+
+  // Check if this is a form submission (from fetcher)
+  if (request.method === 'GET' && request.headers.get('Content-Type')?.includes('multipart/form-data')) {
+    const formData = await request.formData();
+    const action = formData.get('_action');
+
+    if (action === 'updateSort') {
+      sortField = formData.get('sortField')?.toString() || 'isEnabled';
+      sortDirection = formData.get('sortDirection')?.toString() || 'desc';
+      // Preserve existing filter if any
+      statusFilter = url.searchParams.get('status');
+    } else if (action === 'updateFilter') {
+      statusFilter = formData.get('status')?.toString() || null;
+      // Preserve existing sort if any
+      sortField = url.searchParams.get('sortField') || 'isEnabled';
+      sortDirection = url.searchParams.get('sortDirection') || 'desc';
+    }
+  } else {
+    // Get parameters from URL for regular page loads
+    sortField = url.searchParams.get('sortField') || 'isEnabled';
+    sortDirection = url.searchParams.get('sortDirection') || 'desc';
+    statusFilter = url.searchParams.get('status');
+  }
+
+  // Build query
+  let query = drizzleDb
     .select()
     .from(productsTable)
-    .where(eq(productsTable.shopId, session.shop))
-    .orderBy(productsTable.createdAt);
-  
-  return json({ 
+    .where(eq(productsTable.shopId, session.shop));
+
+  // Apply status filter if provided
+  if (statusFilter === 'enabled') {
+    query = query.where(eq(productsTable.isEnabled, true));
+  } else if (statusFilter === 'disabled') {
+    query = query.where(eq(productsTable.isEnabled, false));
+  }
+
+  // Apply sorting
+  if (sortField === 'title') {
+    query = query.orderBy(sortDirection === 'asc' ? asc(productsTable.title) : desc(productsTable.title));
+  } else if (sortField === 'updatedAt') {
+    query = query.orderBy(sortDirection === 'asc' ? asc(productsTable.updatedAt) : desc(productsTable.updatedAt));
+  } else if (sortField === 'isEnabled') {
+    query = query.orderBy(sortDirection === 'asc' ? asc(productsTable.isEnabled) : desc(productsTable.isEnabled));
+  } else {
+    // Default to createdAt
+    query = query.orderBy(sortDirection === 'asc' ? asc(productsTable.createdAt) : desc(productsTable.createdAt));
+  }
+
+  const products = await query;
+
+  return Response.json({
     shop: session.shop,
     products,
+    currentSort: { field: sortField, direction: sortDirection },
+    currentFilter: statusFilter || 'all',
   });
 };
 
@@ -63,17 +116,18 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
 
   if (action === "create_product") {
     const productData = formData.get("productData");
-    
+
     if (!productData) {
-      return json<ActionData>({ error: "No product data provided" }, { status: 400 });
+      const data: ActionData = { error: "No product data provided" };
+      return Response.json(data, { status: 400 });
     }
 
     try {
       const selectedProduct: ShopifyProduct = JSON.parse(productData as string);
-      
+
       // Extract numeric ID from GID (e.g., "gid://shopify/Product/15020147966338" -> 15020147966338)
       const productIdNumber = parseInt(selectedProduct.id.replace('gid://shopify/Product/', ''), 10);
-      
+
       // Check if product already exists
       const existingProduct = await drizzleDb
         .select()
@@ -82,7 +136,8 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
         .limit(1);
 
       if (existingProduct.length > 0) {
-        return json<ActionData>({ error: "Product is already enabled for AI generation" }, { status: 400 });
+        const data: ActionData = { error: "Product is already enabled for AI generation" };
+        return Response.json(data, { status: 400 });
       }
 
       // Create new product in database
@@ -98,21 +153,75 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
 
       await drizzleDb.insert(productsTable).values(newProduct);
 
-      return json<ActionData>({ success: true, message: "Product enabled for AI generation" });
+      const data: ActionData = { success: true, message: "Product enabled for AI generation" };
+      return Response.json(data);
     } catch (error) {
       console.error("Error creating product:", error);
-      return json<ActionData>({ error: "Failed to enable product for AI generation" }, { status: 500 });
+      const data: ActionData = { error: "Failed to enable product for AI generation" };
+      return Response.json(data, { status: 500 });
     }
   }
 
-  return json<ActionData>({ error: "Invalid action" }, { status: 400 });
+  const data: ActionData = { error: "Invalid action" };
+  return Response.json(data, { status: 400 });
 };
 
 export default function ProductsIndexPage() {
-  const { shop, products } = useLoaderData<typeof loader>();
+  const { products, currentSort, currentFilter } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<ActionData>();
+  const sortFetcher = useFetcher();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Update URL when sort/filter changes without affecting scroll position
+  useEffect(() => {
+    if (sortFetcher.state === 'idle' && sortFetcher.data) {
+      const data = sortFetcher.data as any;
+      if (data.currentSort || data.currentFilter) {
+        const params = new URLSearchParams(location.search);
+
+        // Update sort parameters if they exist in the fetcher data
+        if (data.currentSort) {
+          params.set('sortField', data.currentSort.field);
+          params.set('sortDirection', data.currentSort.direction);
+        }
+
+        // Update filter parameter if it exists in the fetcher data
+        if (data.currentFilter && data.currentFilter !== 'all') {
+          params.set('status', data.currentFilter);
+        } else if (data.currentFilter === 'all') {
+          params.delete('status');
+        }
+
+        // Update URL without affecting scroll position
+        navigate(`${location.pathname}?${params.toString()}`, {
+          replace: true,
+          preventScrollReset: true
+        });
+      }
+    }
+  }, [sortFetcher.state, sortFetcher.data, navigate, location]);
+
+  // Handle sort change
+  const handleSortChange = useCallback((value: string) => {
+    const [field, direction] = value.split('-');
+    const formData = new FormData();
+    formData.append('_action', 'updateSort');
+    formData.append('sortField', field);
+    formData.append('sortDirection', direction);
+    sortFetcher.submit(formData, { method: 'get' });
+  }, [sortFetcher]);
+
+  // Handle filter change
+  const handleFilterChange = useCallback((value: string) => {
+    const formData = new FormData();
+    formData.append('_action', 'updateFilter');
+    if (value !== 'all') {
+      formData.append('status', value);
+    }
+    sortFetcher.submit(formData, { method: 'get' });
+  }, [sortFetcher]);
 
   const handleProductClick = useCallback((productUuid: string) => {
     navigate(`/app/products/${productUuid}`);
@@ -121,7 +230,7 @@ export default function ProductsIndexPage() {
   const handleProductSelection = useCallback(async () => {
     try {
       setIsSubmitting(true);
-      
+
       // Use the modern Resource Picker API
       const selected = await (window as any).shopify.resourcePicker({
         type: 'product',
@@ -136,12 +245,12 @@ export default function ProductsIndexPage() {
 
       if (selected && selected.length > 0) {
         const selectedProduct = selected[0];
-        
+
         // Submit the product data to create it in the database
         const formData = new FormData();
         formData.append("action", "create_product");
         formData.append("productData", JSON.stringify(selectedProduct));
-        
+
         fetcher.submit(formData, { method: "post" });
       }
     } catch (error) {
@@ -154,14 +263,14 @@ export default function ProductsIndexPage() {
   const handleCreateNewProduct = useCallback(async () => {
     try {
       setIsSubmitting(true);
-      
+
       // Redirect to Shopify's product creation page
-      const redirect = await (window as any).shopify.actions.Redirect.create({
+      await (window as any).shopify.actions.Redirect.create({
         url: `/admin/products/new`,
       });
-      
+
       console.log("Redirecting to create new product");
-      
+
     } catch (error) {
       console.error("Error creating new product:", error);
     } finally {
@@ -202,13 +311,13 @@ export default function ProductsIndexPage() {
                     size="small"
                   />
                   <BlockStack gap="100">
-                    <span 
+                    <span
                       onClick={() => handleProductClick(uuid)}
                       style={{ cursor: 'pointer', textDecoration: 'underline' }}
                     >
-                      <Text 
-                        variant="bodyMd" 
-                        fontWeight="semibold" 
+                      <Text
+                        variant="bodyMd"
+                        fontWeight="semibold"
                         as="span"
                         tone="base"
                       >
@@ -249,9 +358,9 @@ export default function ProductsIndexPage() {
   );
 
   return (
-    <>
+    <Page title="Products">
       <TitleBar title="Products" />
-      
+
       <Layout>
         <Layout.Section>
           <BlockStack gap="500">
@@ -261,11 +370,6 @@ export default function ProductsIndexPage() {
                   <Text as="h2" variant="headingLg">
                     AI-Enabled Products
                   </Text>
-                  <InlineStack gap="200">
-                    <Button onClick={handleProductSelection} variant="primary">
-                      Select from Store
-                    </Button>
-                  </InlineStack>
                 </InlineStack>
 
                 <Text variant="bodyMd" as="p">
@@ -277,7 +381,7 @@ export default function ProductsIndexPage() {
                   <Text variant="headingMd" as="h3">
                     Add Products for AI Generation
                   </Text>
-                  
+
                   <Layout>
                     <Layout.Section variant="oneHalf">
                       <Card>
@@ -290,8 +394,8 @@ export default function ProductsIndexPage() {
                               Create a brand new product specifically designed for AI pet customization.
                             </Text>
                           </BlockStack>
-                          <Button 
-                            variant="primary" 
+                          <Button
+                            variant="primary"
                             onClick={handleCreateNewProduct}
                             loading={isSubmitting}
                             disabled={isSubmitting}
@@ -316,7 +420,7 @@ export default function ProductsIndexPage() {
                               Choose from products already in your store to enable for AI pet generation.
                             </Text>
                           </BlockStack>
-                          <Button 
+                          <Button
                             variant="secondary"
                             onClick={handleProductSelection}
                             loading={isSubmitting || fetcher.state === "submitting"}
@@ -340,16 +444,49 @@ export default function ProductsIndexPage() {
                         </BlockStack>
                       </Card>
                     </Layout.Section>
-
                   </Layout>
                 </BlockStack>
               </BlockStack>
             </Card>
 
-            <Card>{productsMarkup}</Card>
+            <Card>
+              {products.length > 0 && (
+                <BlockStack gap="400">
+                  <InlineStack align="space-between" wrap={false}>
+                    <Select
+                      label="Sort by"
+                      labelInline
+                      options={[
+                        { label: 'Newest first', value: 'createdAt-desc' },
+                        { label: 'Oldest first', value: 'createdAt-asc' },
+                        { label: 'Last updated', value: 'updatedAt-desc' },
+                        { label: 'Title A-Z', value: 'title-asc' },
+                        { label: 'Title Z-A', value: 'title-desc' },
+                        { label: 'Status (enabled first)', value: 'isEnabled-desc' },
+                        { label: 'Status (disabled first)', value: 'isEnabled-asc' },
+                      ]}
+                      value={`${currentSort.field}-${currentSort.direction}`}
+                      onChange={handleSortChange}
+                    />
+                    <ChoiceList
+                      title="Filter by status"
+                      titleHidden
+                      choices={[
+                        { label: 'All products', value: 'all' },
+                        { label: 'Enabled only', value: 'enabled' },
+                        { label: 'Disabled only', value: 'disabled' },
+                      ]}
+                      selected={[currentFilter]}
+                      onChange={(selected) => handleFilterChange(selected[0])}
+                    />
+                  </InlineStack>
+                </BlockStack>
+              )}
+              {productsMarkup}
+            </Card>
           </BlockStack>
         </Layout.Section>
       </Layout>
-    </>
+    </Page>
   );
-} 
+}

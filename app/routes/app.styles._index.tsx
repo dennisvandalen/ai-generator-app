@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+
 import { useLoaderData, useSubmit, useActionData, Link, useNavigate } from "@remix-run/react";
 import {
   Layout,
@@ -13,20 +13,20 @@ import {
   Modal,
   FormLayout,
   TextField,
-  IndexTable,
+  IndexTable, Page,
 } from "@shopify/polaris";
-import { authenticate } from "../shopify.server";
+import { authenticate } from "~/shopify.server";
 import { useState, useCallback, useEffect } from "react";
 import db from "../db.server";
-import { aiStylesTable } from "../db/schema";
-import { getShopId } from "../utils/getShopId";
+import { aiStylesTable } from "~/db/schema";
+import { getShopId } from "~/utils/getShopId";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { TitleBar } from "@shopify/app-bridge-react";
-import { HoverImagePreview } from "../components/HoverImagePreview";
-import { ImageModal } from "../components/ImageModal";
+import { HoverImagePreview } from "~/components/HoverImagePreview";
+import { ImageModal } from "~/components/ImageModal";
 
 const AiStyleSchema = z.object({
   name: z.string().min(1, { message: "Style name is required" }),
@@ -50,7 +50,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     .from(aiStylesTable)
     .where(eq(aiStylesTable.shopId, shopId));
 
-  return json({
+  return Response.json({
     aiStyles: styles,
   });
 };
@@ -64,7 +64,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const result = AiStyleSchema.safeParse(rawData);
 
   if (!result.success) {
-    return json({ errors: result.error.formErrors.fieldErrors }, { status: 400 });
+    return Response.json({ errors: result.error.formErrors.fieldErrors }, { status: 400 });
   }
 
   const { name, promptTemplate, exampleImageUrl } = result.data;
@@ -81,7 +81,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     updatedAt: new Date().toISOString(),
   });
 
-  return json({ success: true, uuid });
+  return Response.json({ success: true, uuid });
 };
 
 export default function StylesIndexPage() {
@@ -145,14 +145,13 @@ export default function StylesIndexPage() {
         { title: "Thumbnail" },
         { title: "Name" },
         { title: "Status" },
-        { title: "Date Created" },
         { title: "Actions" },
       ]}
       selectable={false}
     >
       {aiStyles.map(
         (
-          { id, uuid, name, promptTemplate, exampleImageUrl, createdAt, isActive },
+          { id, uuid, name, promptTemplate, exampleImageUrl, isActive },
           index
         ) => (
           <IndexTable.Row id={id.toString()} key={id} position={index}>
@@ -173,9 +172,6 @@ export default function StylesIndexPage() {
               <Badge tone={isActive ? "success" : undefined}>
                 {isActive ? "Active" : "Draft"}
               </Badge>
-            </IndexTable.Cell>
-            <IndexTable.Cell>
-              {new Date(createdAt).toLocaleDateString()}
             </IndexTable.Cell>
             <IndexTable.Cell>
               <InlineStack gap="200">
@@ -203,7 +199,7 @@ export default function StylesIndexPage() {
   );
 
   return (
-    <>
+    <Page title={'AI Styles'}>
       <TitleBar title="AI Styles" />
 
       <Layout>
@@ -233,14 +229,6 @@ export default function StylesIndexPage() {
                       <BlockStack gap="200">
                         <Text as="h3" variant="headingMd" tone="subdued">Total Styles</Text>
                         <Text as="p" variant="headingXl">{aiStyles.length}</Text>
-                      </BlockStack>
-                    </Card>
-                  </Layout.Section>
-                  <Layout.Section variant="oneThird">
-                    <Card>
-                      <BlockStack gap="200">
-                        <Text as="h3" variant="headingMd" tone="subdued">Status</Text>
-                        <Badge tone="success">Active</Badge>
                       </BlockStack>
                     </Card>
                   </Layout.Section>
@@ -323,6 +311,6 @@ export default function StylesIndexPage() {
         isOpen={!!modalImage}
         onClose={handleImageModalClose}
       />
-    </>
+    </Page>
   );
-} 
+}

@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+
 import { authenticate } from "../shopify.server";
 import { fal } from "@fal-ai/client";
 import { getShopId } from "../utils/getShopId";
@@ -12,7 +12,7 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
   const shopId = getShopId(session.shop);
 
   if (!params.id) {
-    return json({ error: "Style UUID is required" }, { status: 400 });
+    return Response.json({ error: "Style UUID is required" }, { status: 400 });
   }
 
   // Configure FAL client
@@ -24,15 +24,14 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
   const intent = formData.get("intent");
 
   if (intent !== "test-generation") {
-    return json({ error: "Invalid intent" }, { status: 400 });
+    return Response.json({ error: "Invalid intent" }, { status: 400 });
   }
 
   const promptTemplate = formData.get("promptTemplate") as string;
-  const styleName = formData.get("styleName") as string;
   const testImageType = formData.get("testImageType") as string || "cat";
 
   if (!promptTemplate) {
-    return json({ error: "Prompt template is required" }, { status: 400 });
+    return Response.json({ error: "Prompt template is required" }, { status: 400 });
   }
 
   try {
@@ -47,7 +46,7 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
       .limit(1);
 
     if (!aiStyle.length) {
-      return json({ error: "Style not found" }, { status: 404 });
+      return Response.json({ error: "Style not found" }, { status: 404 });
     }
 
     // Generate a test prompt by replacing placeholders
@@ -59,7 +58,7 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
     const startTime = Date.now();
 
     // Use the selected test image URL
-    const inputImageUrl = testImageType === "dog" 
+    const inputImageUrl = testImageType === "dog"
       ? "https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Labrador_Retriever_portrait.jpg/960px-Labrador_Retriever_portrait.jpg"
       : "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/A-Cat.jpg/1600px-A-Cat.jpg?20101227100718";
 
@@ -111,21 +110,21 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
     }
 
     console.log(`Test generation completed successfully! Generated image: ${generatedImageUrl}`);
-    
-    return json({
+
+    return Response.json({
       success: true,
       imageUrl: generatedImageUrl,
       processingTimeMs: processingTime,
       prompt: finalPrompt,
       message: "Test generation completed successfully using FLUX Kontext",
     });
-    
+
   } catch (error) {
     console.error("Test generation error:", error);
-    
-    return json({ 
+
+    return Response.json({
       error: error instanceof Error ? error.message : "Failed to generate test image",
       success: false,
     }, { status: 500 });
   }
-}; 
+};

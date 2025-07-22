@@ -1,7 +1,7 @@
-import { json, type ActionFunctionArgs } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
-import { AIGenerationService } from "../services/aiGenerationService";
-import { getShopId } from "../utils/getShopId";
+import { type ActionFunctionArgs  } from "@remix-run/node";
+import { authenticate } from "~/shopify.server";
+import { AIGenerationService } from "~/services/aiGenerationService";
+import { getShopId } from "~/utils/getShopId";
 import db from "../db.server";
 import { aiStylesTable, generationsTable, productsTable } from "../db/schema";
 import { eq, and } from "drizzle-orm";
@@ -15,14 +15,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const auth = await authenticate.public.appProxy(request);
     session = auth.session;
     if (!session) {
-      return json({
+      return Response.json({
         success: false,
         error: "Unauthorized - Shopify authentication failed",
         message: "No session returned from authentication"
       }, { status: 401 });
     }
   } catch (error) {
-    return json({
+    return Response.json({
       success: false,
       error: "Unauthorized - Shopify authentication failed",
       message: error instanceof Error ? error.message : "Unknown error"
@@ -33,7 +33,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const body = await request.json();
     const { styleId, imageUrl, productId: shopifyProductId } = body;
     if (!styleId || !imageUrl || !shopifyProductId) {
-      return json({ error: "Missing styleId, imageUrl, or productId" }, { status: 400 });
+      return Response.json({ error: "Missing styleId, imageUrl, or productId" }, { status: 400 });
     }
 
     // Get shopId from session
@@ -50,7 +50,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .limit(1);
 
     if (!product.length) {
-      return json({ error: "Product not found" }, { status: 404 });
+      return Response.json({ error: "Product not found" }, { status: 404 });
     }
     const productId = product[0].id;
 
@@ -64,7 +64,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       .limit(1);
 
     if (!aiStyle.length) {
-      return json({ error: "Style not found" }, { status: 404 });
+      return Response.json({ error: "Style not found" }, { status: 404 });
     }
 
     const style = aiStyle[0];
@@ -118,7 +118,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       })
       .where(eq(aiStylesTable.id, style.id));
 
-    return json({
+    return Response.json({
       success: true,
       generations: generations, // Return an array of generation objects
       processingTimeMs: processingTime,
@@ -129,6 +129,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
   } catch (error: any) {
     console.error("Generation error:", error);
-    return json({ error: error instanceof Error ? error.message : "Failed to generate image", success: false }, { status: 500 });
+    return Response.json({ error: error instanceof Error ? error.message : "Failed to generate image", success: false }, { status: 500 });
   }
-}; 
+};

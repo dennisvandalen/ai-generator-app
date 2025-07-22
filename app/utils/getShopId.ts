@@ -1,5 +1,3 @@
-import { Session } from "@shopify/shopify-app-remix/server";
-
 /**
  * Extracts the shop ID from the session's shop domain.
  * @param shopDomain - The shop domain from the Shopify session (e.g., 'mystore.myshopify.com').
@@ -10,4 +8,4 @@ export function getShopId(shopDomain: string): string {
     throw new Error("Shop domain is required to extract a shop ID.");
   }
   return shopDomain;
-} 
+}

@@ -1,69 +1,52 @@
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { useLoaderData, useNavigate, useSubmit, useActionData, useRevalidator, Link } from "@remix-run/react";
+import type {LoaderFunctionArgs, ActionFunctionArgs} from "@remix-run/node";
+import {useLoaderData, useNavigate, useSubmit, useActionData, useRevalidator} from "@remix-run/react";
 import {
   Layout,
   Text,
   Card,
   BlockStack,
-  Button,
   InlineStack,
   Badge,
   Thumbnail,
-  IndexTable,
-  Checkbox,
+  Page,
   Banner,
-  TextField,
+  Checkbox,
+  Button,
+  IndexTable,
 } from "@shopify/polaris";
-import { ArrowLeftIcon, ImageIcon } from "@shopify/polaris-icons";
-import { TitleBar, SaveBar, useAppBridge } from "@shopify/app-bridge-react";
-import { useForm, useField, asChoiceField } from "@shopify/react-form";
-import { authenticate } from "../shopify.server";
+import {ImageIcon} from "@shopify/polaris-icons";
+import {TitleBar, SaveBar, useAppBridge} from "@shopify/app-bridge-react";
+import {authenticate} from "~/shopify.server";
 import drizzleDb from "../db.server";
-import { productsTable, sizesTable, aiStylesTable, productStylesTable, type Product, type Size, type AiStyle, type ProductStyle } from "../db/schema";
-import { eq } from "drizzle-orm";
-import { getShopId } from "../utils/getShopId";
-import { useState, useCallback, useEffect } from "react";
+import {
+  productsTable,
+  aiStylesTable,
+  productStylesTable,
+  productBasesTable,
+  productProductBasesTable,
+  productBaseVariantsTable,
+  productBaseVariantMappingsTable,
+  productBaseOptionsTable,
+  productBaseVariantOptionValuesTable,
+} from "~/db/schema";
+import {eq, inArray} from "drizzle-orm";
+import {getShopId} from "~/utils/getShopId";
+import {extractShopifyId} from "~/utils/shopHelpers";
+import {useState, useCallback, useEffect} from "react";
 import BreadcrumbLink from "../components/BreadcrumbLink";
-import { METAFIELDS } from "../constants";
+import {AiStyleSelection} from "~/components/AiStyleSelection";
+import {ProductFormProvider, useProductForm} from "~/contexts/ProductFormContext";
 
-// GraphQL query to fetch product with variants and metafields
+// Import GraphQL queries from the original file
+// GraphQL query to fetch product with variants, handle, status, and images
 const PRODUCT_QUERY = `
-  query Product($id: ID!) {
+  query GetProduct($id: ID!) {
     product(id: $id) {
       id
       title
       handle
       status
-      createdAt
-      updatedAt
-      productType
-      vendor
-      descriptionHtml
-      metafields(first: 250) {
-        edges {
-          node {
-            id
-            namespace
-            key
-            value
-            type
-            description
-            createdAt
-            updatedAt
-          }
-        }
-      }
-      images(first: 5) {
-        edges {
-          node {
-            id
-            url
-            altText
-          }
-        }
-      }
-      variants(first: 50) {
+      variants(first: 100) {
         edges {
           node {
             id
@@ -86,97 +69,31 @@ const PRODUCT_QUERY = `
           }
         }
       }
-    }
-  }
-`;
-
-// GraphQL mutation to update product metafields
-const UPDATE_PRODUCT_METAFIELDS_MUTATION = `
-  mutation UpdateProductMetafields($input: ProductInput!) {
-    productUpdate(input: $input) {
-      product {
-        id
-      }
-      userErrors {
-        field
-        message
+      images(first: 10) {
+        edges {
+          node {
+            id
+            url
+            altText
+          }
+        }
       }
     }
   }
 `;
 
-interface ShopifyMetafield {
-  id: string;
-  namespace: string;
-  key: string;
-  value: string;
-  type: string;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface ShopifyVariant {
-  id: string;
-  title: string;
-  sku: string;
-  price: string;
-  compareAtPrice?: string;
-  availableForSale: boolean;
-  inventoryQuantity: number;
-  position: number;
-  selectedOptions: Array<{
-    name: string;
-    value: string;
-  }>;
-  image?: {
-    id: string;
-    url: string;
-    altText?: string;
-  };
-}
-
-interface ShopifyProduct {
-  id: string;
-  title: string;
-  handle: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  productType: string;
-  vendor: string;
-  descriptionHtml: string;
-  metafields: {
-    edges: Array<{
-      node: ShopifyMetafield;
-    }>;
-  };
-  images: {
-    edges: Array<{
-      node: {
-        id: string;
-        url: string;
-        altText?: string;
-      };
-    }>;
-  };
-  variants: {
-    edges: Array<{
-      node: ShopifyVariant;
-    }>;
-  };
-}
-
+// Type definitions for action data
 type ActionData =
   | { error: string; success?: undefined; message?: undefined }
   | { success: true; message: string; error?: undefined };
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { session, admin } = await authenticate.admin(request);
-  const { id } = params;
+// Loader function - similar to the original but adapted for the context
+export const loader = async ({request, params}: LoaderFunctionArgs) => {
+  const {session, admin} = await authenticate.admin(request);
+  const {id} = params;
 
   if (!id) {
-    throw new Response("Product ID is required", { status: 400 });
+    throw new Response("Product ID is required", {status: 400});
   }
 
   // Fetch the product from our database
@@ -187,7 +104,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     .limit(1);
 
   if (dbProduct.length === 0) {
-    throw new Response("Product not found", { status: 404 });
+    throw new Response("Product not found", {status: 404});
   }
 
   const product = dbProduct[0];
@@ -195,40 +112,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Fetch the product from Shopify with variants
   const shopifyGID = `gid://shopify/Product/${product.shopifyProductId}`;
 
-  let shopifyProduct: ShopifyProduct | null = null;
+  let shopifyProduct = null;
   let updateNeeded = false;
 
   try {
     const response = await admin.graphql(PRODUCT_QUERY, {
-      variables: { id: shopifyGID }
+      variables: {id: shopifyGID}
     });
 
     const data = await response.json();
 
-    if (data.data?.product) {
+    if (data.errors) {
+      console.error("GraphQL errors fetching product:", data.errors);
+      // Continue with the flow, using fallback data
+    } else if (data.data?.product) {
       const fetchedProduct = data.data.product;
       shopifyProduct = fetchedProduct;
-
-      // Log all metafields for the product
-      const productMetafields = fetchedProduct.metafields?.edges?.map((edge: { node: ShopifyMetafield }) => edge.node) || [];
-      console.log('=== PRODUCT METAFIELDS ===');
-      console.log(`Product: ${fetchedProduct.title} (ID: ${fetchedProduct.id})`);
-      console.log(`Total metafields: ${productMetafields.length}`);
-      
-      if (productMetafields.length > 0) {
-        productMetafields.forEach((metafield: ShopifyMetafield, index: number) => {
-          console.log(`\n--- Product Metafield ${index + 1} ---`);
-          console.log(`Namespace: ${metafield.namespace}`);
-          console.log(`Key: ${metafield.key}`);
-          console.log(`Type: ${metafield.type}`);
-          console.log(`Value: ${metafield.value}`);
-          console.log(`Description: ${metafield.description || 'N/A'}`);
-          console.log(`Created: ${metafield.createdAt}`);
-          console.log(`Updated: ${metafield.updatedAt}`);
-        });
-      } else {
-        console.log('No metafields found for this product.');
-      }
 
       // Check if title needs updating
       if (fetchedProduct.title !== product.title) {
@@ -243,16 +142,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           })
           .where(eq(productsTable.uuid, id));
       }
+    } else {
+      console.warn("No product data returned from Shopify for ID:", shopifyGID);
     }
   } catch (error) {
     console.error("Error fetching product from Shopify:", error);
+    // Continue with the flow, using fallback data
   }
 
-  // Fetch sizes for this product
-  const sizes = await drizzleDb
-    .select()
-    .from(sizesTable)
-    .where(eq(sizesTable.productId, product.id));
+  // Create a fallback shopifyProduct if none was fetched
+  if (!shopifyProduct) {
+    console.warn("Using fallback shopifyProduct data for:", product.title);
+    shopifyProduct = {
+      id: shopifyGID,
+      title: product.title,
+      handle: product.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      status: "ACTIVE",
+      variants: {edges: []},
+      images: {edges: []}
+    };
+  }
 
   // Fetch available AI styles for this shop
   const shopId = getShopId(session.shop);
@@ -288,40 +197,174 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     .map(ps => ps.aiStyle?.uuid || '')
     .filter(uuid => uuid);
 
-  return json({
+  // Fetch available product bases for this shop
+  const productBases = await drizzleDb
+    .select()
+    .from(productBasesTable)
+    .where(eq(productBasesTable.shopId, shopId))
+    .orderBy(productBasesTable.sortOrder, productBasesTable.name);
+
+  // Fetch existing product-product base relationships
+  const productProductBases = await drizzleDb
+    .select({
+      id: productProductBasesTable.id,
+      productBaseId: productProductBasesTable.productBaseId,
+      isEnabled: productProductBasesTable.isEnabled,
+      sortOrder: productProductBasesTable.sortOrder,
+      productBase: {
+        id: productBasesTable.id,
+        uuid: productBasesTable.uuid,
+        name: productBasesTable.name,
+        isActive: productBasesTable.isActive,
+      }
+    })
+    .from(productProductBasesTable)
+    .leftJoin(productBasesTable, eq(productProductBasesTable.productBaseId, productBasesTable.id))
+    .where(eq(productProductBasesTable.productId, product.id))
+    .orderBy(productProductBasesTable.sortOrder);
+
+  // Extract linked product base UUIDs
+  const linkedProductBases = productProductBases
+    .filter(ppb => ppb.isEnabled)
+    .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+    .map(ppb => ppb.productBase?.uuid || '')
+    .filter(uuid => uuid);
+
+  // Fetch product base variants for linked product bases
+  const productBaseVariants = linkedProductBases.length > 0 ? await drizzleDb
+    .select({
+      id: productBaseVariantsTable.id,
+      uuid: productBaseVariantsTable.uuid,
+      productBaseId: productBaseVariantsTable.productBaseId,
+      name: productBaseVariantsTable.name,
+      widthPx: productBaseVariantsTable.widthPx,
+      heightPx: productBaseVariantsTable.heightPx,
+      priceModifier: productBaseVariantsTable.priceModifier,
+      isActive: productBaseVariantsTable.isActive,
+      sortOrder: productBaseVariantsTable.sortOrder,
+      productBase: {
+        id: productBasesTable.id,
+        uuid: productBasesTable.uuid,
+        name: productBasesTable.name,
+      }
+    })
+    .from(productBaseVariantsTable)
+    .leftJoin(productBasesTable, eq(productBaseVariantsTable.productBaseId, productBasesTable.id))
+    .where(
+      // Filter by shop ID
+      eq(productBasesTable.shopId, shopId) &&
+      // Only include variants for the linked product bases
+      inArray(
+        productBaseVariantsTable.productBaseId,
+        productProductBases
+          .filter(ppb => ppb.isEnabled)
+          .map(ppb => ppb.productBaseId)
+      )
+    )
+    .orderBy(productBaseVariantsTable.productBaseId, productBaseVariantsTable.sortOrder) : [];
+
+  // Fetch product base options for linked product bases
+  const productBaseOptions = linkedProductBases.length > 0 ? await drizzleDb
+    .select({
+      id: productBaseOptionsTable.id,
+      productBaseId: productBaseOptionsTable.productBaseId,
+      name: productBaseOptionsTable.name,
+      sortOrder: productBaseOptionsTable.sortOrder,
+    })
+    .from(productBaseOptionsTable)
+    .leftJoin(productBasesTable, eq(productBaseOptionsTable.productBaseId, productBasesTable.id))
+    .where(
+      // Filter by shop ID
+      eq(productBasesTable.shopId, shopId) &&
+      // Only include options for the linked product bases
+      inArray(
+        productBaseOptionsTable.productBaseId,
+        productProductBases
+          .filter(ppb => ppb.isEnabled)
+          .map(ppb => ppb.productBaseId)
+      )
+    )
+    .orderBy(productBaseOptionsTable.productBaseId, productBaseOptionsTable.sortOrder) : [];
+
+  // Fetch option values for product base variants
+  const productBaseVariantOptionValues = productBaseVariants.length > 0 ? await drizzleDb
+    .select({
+      id: productBaseVariantOptionValuesTable.id,
+      productBaseVariantId: productBaseVariantOptionValuesTable.productBaseVariantId,
+      productBaseOptionId: productBaseVariantOptionValuesTable.productBaseOptionId,
+      value: productBaseVariantOptionValuesTable.value,
+    })
+    .from(productBaseVariantOptionValuesTable)
+    .where(inArray(
+      productBaseVariantOptionValuesTable.productBaseVariantId,
+      productBaseVariants.map(variant => variant.id)
+    )) : [];
+
+  // Fetch existing variant mappings
+  const variantMappings = await drizzleDb
+    .select({
+      id: productBaseVariantMappingsTable.id,
+      productBaseVariantId: productBaseVariantMappingsTable.productBaseVariantId,
+      shopifyVariantId: productBaseVariantMappingsTable.shopifyVariantId,
+      isActive: productBaseVariantMappingsTable.isActive,
+      productBaseVariant: {
+        id: productBaseVariantsTable.id,
+        uuid: productBaseVariantsTable.uuid,
+        name: productBaseVariantsTable.name,
+      }
+    })
+    .from(productBaseVariantMappingsTable)
+    .leftJoin(productBaseVariantsTable, eq(productBaseVariantMappingsTable.productBaseVariantId, productBaseVariantsTable.id))
+    .where(eq(productBaseVariantMappingsTable.productId, product.id));
+
+  return Response.json({
     product: {
       ...product,
       title: shopifyProduct?.title || product.title, // Use updated title
     },
     shopifyProduct,
-    sizes,
     aiStyles,
     productStyles,
     selectedStyles,
+    productBases,
+    productProductBases,
+    linkedProductBases,
+    productBaseVariants,
+    productBaseOptions,
+    productBaseVariantOptionValues,
+    variantMappings,
     shop: session.shop,
     updateNeeded,
   });
 };
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const { session, admin } = await authenticate.admin(request);
-  const { id } = params;
+// Action function to handle form submissions
+export const action = async ({request, params}: ActionFunctionArgs) => {
+  const {session, admin} = await authenticate.admin(request);
+  const {id} = params;
 
   if (!id) {
-    return json<ActionData>({ error: "Product ID is required" }, { status: 400 });
+    return Response.json({error: "Product ID is required"}, {status: 400});
   }
 
   const formData = await request.formData();
   const action = formData.get("action");
 
-  if (action === "toggle_enabled") {
+  if (action === "save_product_settings") {
     const isEnabled = formData.get("isEnabled") === "true";
     const selectedStylesJson = formData.get("selectedStyles");
+    const selectedProductBasesJson = formData.get("selectedProductBases");
     const reorderedStylesJson = formData.get("reorderedStyles");
-    
+    const variantMappingsJson = formData.get("variantMappings");
+
     let selectedStyles: string[] = [];
+    let selectedProductBases: string[] = [];
     let reorderedStyles: Array<{ uuid: string; sortOrder: number }> = [];
-    
+    let variantMappings: Array<{
+      productBaseVariantId: number;
+      shopifyVariantId: string;
+    }> = [];
+
     if (selectedStylesJson) {
       try {
         selectedStyles = JSON.parse(selectedStylesJson as string);
@@ -330,11 +373,27 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
     }
 
+    if (selectedProductBasesJson) {
+      try {
+        selectedProductBases = JSON.parse(selectedProductBasesJson as string);
+      } catch (error) {
+        console.error("Error parsing selectedProductBases:", error);
+      }
+    }
+
     if (reorderedStylesJson) {
       try {
         reorderedStyles = JSON.parse(reorderedStylesJson as string);
       } catch (error) {
         console.error("Error parsing reorderedStyles:", error);
+      }
+    }
+
+    if (variantMappingsJson) {
+      try {
+        variantMappings = JSON.parse(variantMappingsJson as string);
+      } catch (error) {
+        console.error("Error parsing variantMappings:", error);
       }
     }
 
@@ -374,17 +433,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           .delete(productStylesTable)
           .where(eq(productStylesTable.productId, productId));
 
+        const currentTime = new Date().toISOString();
+
         // Then, insert new relationships for selected styles
         if (selectedStyles.length > 0) {
-          const currentTime = new Date().toISOString();
-          
           // Create product-style relationships with proper ordering
           const productStylesToInsert = [];
-          
+
           for (let index = 0; index < selectedStyles.length; index++) {
             const styleUuid = selectedStyles[index];
             const styleId = styleUuidToId.get(styleUuid);
-            
+
             if (styleId) {
               // Check if we have reordered data for this style
               const reorderedStyle = reorderedStyles.find(rs => rs.uuid === styleUuid);
@@ -408,313 +467,553 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           }
         }
 
+        // Handle product bases (if provided)
+        if (selectedProductBases) {
+          // Get all product bases for this shop to map UUIDs to IDs
+          const productBases = await drizzleDb
+            .select()
+            .from(productBasesTable)
+            .where(eq(productBasesTable.shopId, shopId));
+
+          const productBaseUuidToId = new Map(productBases.map(pb => [pb.uuid, pb.id]));
+
+          // First, delete all existing product-product base relationships for this product
+          await drizzleDb
+            .delete(productProductBasesTable)
+            .where(eq(productProductBasesTable.productId, productId));
+
+          // Then, insert new relationships for selected product bases
+          if (selectedProductBases.length > 0) {
+            const productProductBasesToInsert = [];
+
+            for (let index = 0; index < selectedProductBases.length; index++) {
+              const productBaseUuid = selectedProductBases[index];
+              const productBaseId = productBaseUuidToId.get(productBaseUuid);
+
+              if (productBaseId) {
+                productProductBasesToInsert.push({
+                  productId: productId,
+                  productBaseId: productBaseId,
+                  sortOrder: index,
+                  isEnabled: true,
+                  createdAt: currentTime,
+                  updatedAt: currentTime,
+                });
+              }
+            }
+
+            if (productProductBasesToInsert.length > 0) {
+              await drizzleDb
+                .insert(productProductBasesTable)
+                .values(productProductBasesToInsert);
+            }
+          }
+        }
+
+        // Handle variant mappings as part of the main save action
+        // This consolidates the save functionality and eliminates the need for a separate "save_variant_mappings" action
+        if (variantMappings.length > 0 || true) { // Always process to ensure we clean up orphaned mappings
+          // First, delete all existing mappings for this product
+          // This ensures we don't have any stale mappings
+          await drizzleDb
+            .delete(productBaseVariantMappingsTable)
+            .where(eq(productBaseVariantMappingsTable.productId, productId));
+
+          // Then, insert new mappings
+          // Only insert if there are actually mappings to insert
+          if (variantMappings.length > 0) {
+            const mappingsToInsert = variantMappings.map(mapping => ({
+              productId: productId,
+              productBaseVariantId: mapping.productBaseVariantId,
+              shopifyVariantId: extractShopifyId(mapping.shopifyVariantId),
+              isActive: true,
+              createdAt: currentTime,
+              updatedAt: currentTime,
+            }));
+
+            await drizzleDb
+              .insert(productBaseVariantMappingsTable)
+              .values(mappingsToInsert);
+          }
+        }
+
         // Update metafields on the Shopify product (only basic info, not styles)
         const metafieldsInput = {
           id: shopifyGID,
           metafields: [
             {
-              namespace: METAFIELDS.NAMESPACE,
-              key: METAFIELDS.KEYS.AI_ENABLED,
+              namespace: "ai_generator",
+              key: "ai_enabled",
               value: isEnabled.toString(),
               type: "boolean"
             },
             {
-              namespace: METAFIELDS.NAMESPACE, 
-              key: METAFIELDS.KEYS.LAST_UPDATED,
+              namespace: "ai_generator",
+              key: "last_updated",
               value: currentDate,
               type: "date_time"
             }
           ]
         };
 
-        const metafieldResponse = await admin.graphql(UPDATE_PRODUCT_METAFIELDS_MUTATION, {
-          variables: { input: metafieldsInput }
-        });
-
-        const metafieldData = await metafieldResponse.json();
-
-        if (metafieldData.data?.productUpdate?.userErrors?.length > 0) {
-          console.error("Error updating metafields:", metafieldData.data.productUpdate.userErrors);
-        } else {
-          console.log("Successfully updated product metafields");
+        try {
+          await admin.graphql(
+            `mutation UpdateProductMetafields($input: ProductInput!) {
+              productUpdate(input: $input) {
+                product { id }
+                userErrors { field message }
+              }
+            }`,
+            {
+              variables: {input: metafieldsInput}
+            }
+          );
+        } catch (error) {
+          console.error("Error updating metafields:", error);
         }
       }
 
-      return json<ActionData>({
+      return Response.json({
         success: true,
-        message: `Product ${isEnabled ? 'enabled' : 'disabled'} for AI generation with ${selectedStyles.length} style(s) selected`
+        message: `Product ${isEnabled ? 'enabled' : 'disabled'} for AI generation with ${selectedStyles.length} style(s), ${selectedProductBases?.length || 0} product base(s), and ${variantMappings.length} variant mapping(s) saved`
       });
     } catch (error) {
       console.error("Error updating product status:", error);
-      return json<ActionData>({ error: "Failed to update product status" }, { status: 500 });
+      return Response.json({error: "Failed to update product status"}, {status: 500});
     }
   }
 
-  return json<ActionData>({ error: "Invalid action" }, { status: 400 });
+  if (action === "save_variant_mappings") {
+    const mappingsJson = formData.get("mappings");
+
+    let mappings: Array<{
+      productBaseVariantId: number;
+      shopifyVariantId: string;
+    }> = [];
+
+    if (mappingsJson) {
+      try {
+        mappings = JSON.parse(mappingsJson as string);
+      } catch (error) {
+        console.error("Error parsing mappings:", error);
+      }
+    }
+
+    try {
+      // Get the product from our database to get the numeric ID
+      const dbProduct = await drizzleDb
+        .select()
+        .from(productsTable)
+        .where(eq(productsTable.uuid, id))
+        .limit(1);
+
+      if (dbProduct.length > 0) {
+        const productId = dbProduct[0].id;
+        const currentTime = new Date().toISOString();
+
+        // First, delete all existing mappings for this product
+        await drizzleDb
+          .delete(productBaseVariantMappingsTable)
+          .where(eq(productBaseVariantMappingsTable.productId, productId));
+
+        // Then, insert new mappings
+        if (mappings.length > 0) {
+          const mappingsToInsert = mappings.map(mapping => ({
+            productId: productId,
+            productBaseVariantId: mapping.productBaseVariantId,
+            shopifyVariantId: extractShopifyId(mapping.shopifyVariantId),
+            isActive: true,
+            createdAt: currentTime,
+            updatedAt: currentTime,
+          }));
+
+          await drizzleDb
+            .insert(productBaseVariantMappingsTable)
+            .values(mappingsToInsert);
+        }
+
+        return Response.json({
+          success: true,
+          message: `Variant mappings saved successfully`
+        });
+      }
+
+      return Response.json({error: "Product not found"}, {status: 404});
+    } catch (error) {
+      console.error("Error saving variant mappings:", error);
+      return Response.json({error: "Failed to save variant mappings"}, {status: 500});
+    }
+  }
+
+  if (action === "create_variants") {
+    const variantsToCreateJson = formData.get("variantsToCreate");
+
+    let variantsToCreate: Array<{
+      productBaseVariantId: number;
+      options: Array<{ name: string; value: string }>;
+    }> = [];
+
+    if (variantsToCreateJson) {
+      try {
+        variantsToCreate = JSON.parse(variantsToCreateJson as string);
+      } catch (error) {
+        console.error("Error parsing variantsToCreate:", error);
+      }
+    }
+
+    try {
+      // Get the product from our database to get the Shopify product ID
+      const dbProduct = await drizzleDb
+        .select()
+        .from(productsTable)
+        .where(eq(productsTable.uuid, id))
+        .limit(1);
+
+      if (dbProduct.length > 0) {
+        const shopifyGID = `gid://shopify/Product/${dbProduct[0].shopifyProductId}`;
+
+        // Create variants in Shopify
+        const variantInputs = variantsToCreate.map(variant => ({
+          optionValues: variant.options.map(opt => ({
+            optionName: opt.name,
+            name: opt.value
+          })),
+          price: "0.00",
+          inventoryItem: {
+            tracked: false
+          }
+        }));
+
+        const response = await admin.graphql(
+          `mutation CreateProductVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkCreate(productId: $productId, variants: $variants) {
+              product { id }
+              productVariants { id title }
+              userErrors { field message }
+            }
+          }`,
+          {
+            variables: {
+              productId: shopifyGID,
+              variants: variantInputs
+            }
+          }
+        );
+
+        const data = await response.json();
+
+        if (data.data?.productVariantsBulkCreate?.userErrors?.length > 0) {
+          const errors = data.data.productVariantsBulkCreate.userErrors;
+          return Response.json({
+            error: `Failed to create variants: ${errors.map((e: any) => e.message).join(', ')}`
+          }, {status: 500});
+        }
+
+        return Response.json({
+          success: true,
+          message: `Successfully created ${variantsToCreate.length} new variant(s)`
+        });
+      }
+
+      return Response.json({error: "Product not found"}, {status: 404});
+    } catch (error) {
+      console.error("Error creating variants:", error);
+      return Response.json({error: "Failed to create variants"}, {status: 500});
+    }
+  }
+
+  if (action === "update_variant_price") {
+    const variantId = formData.get("variantId") as string;
+    const newPrice = formData.get("newPrice") as string;
+
+    try {
+      // Get the product from our database to get the Shopify product ID
+      const dbProduct = await drizzleDb
+        .select()
+        .from(productsTable)
+        .where(eq(productsTable.uuid, id))
+        .limit(1);
+
+      if (dbProduct.length > 0) {
+        const shopifyGID = `gid://shopify/Product/${dbProduct[0].shopifyProductId}`;
+
+        // Update variant price in Shopify
+        const response = await admin.graphql(
+          `mutation UpdateProductVariants($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+            productVariantsBulkUpdate(productId: $productId, variants: $variants, allowPartialUpdates: true) {
+              product { id }
+              productVariants { id price }
+              userErrors { field message }
+            }
+          }`,
+          {
+            variables: {
+              productId: shopifyGID,
+              variants: [{
+                id: variantId,
+                price: newPrice
+              }]
+            }
+          }
+        );
+
+        const data = await response.json();
+
+        if (data.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+          return Response.json({
+            error: `Failed to update variant price: ${data.data.productVariantsBulkUpdate.userErrors.map((e: any) => e.message).join(', ')}`
+          }, {status: 500});
+        }
+
+        return Response.json({
+          success: true,
+          message: `Variant price updated successfully`
+        });
+      }
+
+      return Response.json({error: "Product not found"}, {status: 404});
+    } catch (error) {
+      console.error("Error updating variant price:", error);
+      return Response.json({error: "Failed to update variant price"}, {status: 500});
+    }
+  }
+
+  if (action === "delete_variant") {
+    const variantId = formData.get("variantId") as string;
+
+    try {
+      // Get the product from our database to get the Shopify product ID
+      const dbProduct = await drizzleDb
+        .select()
+        .from(productsTable)
+        .where(eq(productsTable.uuid, id))
+        .limit(1);
+
+      if (dbProduct.length > 0) {
+        const shopifyGID = `gid://shopify/Product/${dbProduct[0].shopifyProductId}`;
+
+        // Delete variant in Shopify
+        const response = await admin.graphql(
+          `mutation DeleteProductVariants($productId: ID!, $variantsIds: [ID!]!) {
+            productVariantsBulkDelete(productId: $productId, variantsIds: $variantsIds) {
+              product { id }
+              userErrors { field message }
+            }
+          }`,
+          {
+            variables: {
+              productId: shopifyGID,
+              variantsIds: [variantId]
+            }
+          }
+        );
+
+        const data = await response.json();
+
+        if (data.data?.productVariantsBulkDelete?.userErrors?.length > 0) {
+          return Response.json({
+            error: `Failed to delete variant: ${data.data.productVariantsBulkDelete.userErrors.map((e: any) => e.message).join(', ')}`
+          }, {status: 500});
+        }
+
+        // Also remove any variant mappings for this variant
+        // Extract the numeric ID from the Shopify GID
+        const numericVariantId = extractShopifyId(variantId);
+        await drizzleDb
+          .delete(productBaseVariantMappingsTable)
+          .where(eq(productBaseVariantMappingsTable.shopifyVariantId, numericVariantId));
+
+        return Response.json({
+          success: true,
+          message: `Variant deleted successfully`
+        });
+      }
+
+      return Response.json({error: "Product not found"}, {status: 404});
+    } catch (error) {
+      console.error("Error deleting variant:", error);
+      return Response.json({error: "Failed to delete variant"}, {status: 500});
+    }
+  }
+
+  return Response.json({error: "Invalid action"}, {status: 400});
 };
 
-export default function ProductDetailPage() {
-  const { product, shopifyProduct, sizes, aiStyles, productStyles, selectedStyles: initialSelectedStyles, shop, updateNeeded } = useLoaderData<typeof loader>();
+// Main component
+export default function ProductDetailPageNew() {
+  const loaderData = useLoaderData<typeof loader>();
   const actionData = useActionData<ActionData>();
   const navigate = useNavigate();
   const submit = useSubmit();
   const revalidator = useRevalidator();
-  const [isSaving, setIsSaving] = useState(false);
   const [isClient, setIsClient] = useState(false);
-  const [shouldResetForm, setShouldResetForm] = useState(false);
-  const [draggedItem, setDraggedItem] = useState<string | null>(null);
-  const [draggedOverItem, setDraggedOverItem] = useState<string | null>(null);
-  const shopify = isClient ? useAppBridge() : null;
+  const appBridge = useAppBridge();
+  const shopify = isClient ? appBridge : null;
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
-  // Initialize form with @shopify/react-form
-  const {
-    fields: {
-      isEnabled,
-      selectedStyles,
-    },
-    submit: submitForm,
-    submitting,
-    dirty,
-    reset,
-  } = useForm({
-    fields: {
-      isEnabled: useField(product.isEnabled ?? false),
-      selectedStyles: useField<string[]>(initialSelectedStyles || []),
-    },
-    onSubmit: async (fieldValues) => {
-      setIsSaving(true);
-      const formData = new FormData();
-      formData.append("action", "toggle_enabled");
-      formData.append("isEnabled", fieldValues.isEnabled.toString());
-      formData.append("selectedStyles", JSON.stringify(fieldValues.selectedStyles));
-      
-      // Include reordered styles data with sort order
-      const reorderedStyles = fieldValues.selectedStyles.map((styleUuid, index) => ({
-        uuid: styleUuid,
-        sortOrder: index,
-      }));
-      formData.append("reorderedStyles", JSON.stringify(reorderedStyles));
-      
-      submit(formData, { method: "post" });
-      return { status: 'success' };
-    },
-  });
+  // Handle form submission
+  const handleSubmit = useCallback((formData: FormData) => {
+    submit(formData, {method: "post"});
+  }, [submit]);
 
-  // Combined loading state for better UX
-  const isLoading = submitting || isSaving || revalidator.state === "loading";
-
-  const handleBackClick = () => {
-    navigate("/app/products");
+  // Initial values for the ProductFormContext
+  const initialValues = {
+    product: loaderData.product,
+    isEnabled: loaderData.product.isEnabled,
+    selectedStyles: loaderData.selectedStyles,
+    selectedProductBases: loaderData.linkedProductBases,
+    variantMappings: loaderData.variantMappings,
+    shopifyProduct: loaderData.shopifyProduct,
+    aiStyles: loaderData.aiStyles,
+    productBases: loaderData.productBases,
+    productBaseVariants: loaderData.productBaseVariants,
+    productBaseOptions: loaderData.productBaseOptions,
+    productBaseVariantOptionValues: loaderData.productBaseVariantOptionValues,
+    shop: loaderData.shop,
+    updateNeeded: loaderData.updateNeeded,
   };
 
-  const handleStyleToggle = useCallback((styleId: string, checked: boolean) => {
-    const currentStyles = selectedStyles.value;
-    if (checked) {
-      selectedStyles.onChange([...currentStyles, styleId]);
-    } else {
-      selectedStyles.onChange(currentStyles.filter(id => id !== styleId));
-    }
-  }, [selectedStyles]);
+  return (
+    <ProductFormProvider initialValues={initialValues} onSubmit={handleSubmit}>
+      <ProductDetailPageContent
+        shopify={shopify}
+        navigate={navigate}
+        actionData={actionData}
+        revalidator={revalidator}
+        submit={submit}
+      />
+    </ProductFormProvider>
+  );
+}
 
-  const handleDragStart = useCallback((e: React.DragEvent, styleUuid: string) => {
-    setDraggedItem(styleUuid);
-    e.dataTransfer.effectAllowed = 'move';
-  }, []);
+// Content component that uses the ProductFormContext
+function ProductDetailPageContent({
+                                    shopify,
+                                    navigate,
+                                    actionData,
+                                    revalidator,
+                                    submit
+                                  }: {
+  shopify: any;
+  navigate: any;
+  actionData: ActionData | undefined;
+  revalidator: any;
+  submit: any;
+}) {
+  // Create a handleSubmit function that uses the submit prop
+  const handleSubmit = useCallback((formData: FormData) => {
+    submit(formData, {method: "post"});
+  }, [submit]);
+  const {
+    state,
+    toggleEnabled,
+    toggleStyle,
+    setSelectedStyles,
+    toggleProductBase,
+    setSelectedProductBases,
+    updateVariantMapping,
+    clearOrphanedMappings,
+    setEditingVariantPrice,
+    setCreatingVariants,
+    isDirty,
+    isLoading,
+    isSaving,
+    creatingVariants,
+    submitForm,
+    resetForm,
+    hasError,
+    errorMessage,
+    successMessage,
+  } = useProductForm();
 
-  const handleDragOver = useCallback((e: React.DragEvent, styleUuid: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDraggedOverItem(styleUuid);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setDraggedOverItem(null);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent, targetStyleUuid: string) => {
-    e.preventDefault();
-    
-    if (!draggedItem || draggedItem === targetStyleUuid) {
-      setDraggedItem(null);
-      setDraggedOverItem(null);
-      return;
-    }
-
-    const currentStyles = selectedStyles.value;
-    const draggedIndex = currentStyles.findIndex(uuid => uuid === draggedItem);
-    const targetIndex = currentStyles.findIndex(uuid => uuid === targetStyleUuid);
-
-    if (draggedIndex !== -1 && targetIndex !== -1) {
-      const newStyles = [...currentStyles];
-      const [draggedStyle] = newStyles.splice(draggedIndex, 1);
-      newStyles.splice(targetIndex, 0, draggedStyle);
-      selectedStyles.onChange(newStyles);
-    }
-
-    setDraggedItem(null);
-    setDraggedOverItem(null);
-  }, [draggedItem, selectedStyles]);
-
-  const handleSave = useCallback(() => {
-    submitForm();
-  }, [submitForm]);
-
-  const handleDiscard = useCallback(() => {
-    reset();
-  }, [reset]);
+  const {product} = state.original;
+  const {shopifyProduct} = state.data;
 
   // Show/hide save bar based on changes
   useEffect(() => {
     if (shopify) {
-      if (dirty || isLoading) {
+      if (isDirty || isLoading) {
         shopify.saveBar.show('product-edit-save-bar');
       } else {
         shopify.saveBar.hide('product-edit-save-bar');
       }
     }
-  }, [dirty, isLoading, shopify]);
+  }, [isDirty, isLoading, shopify]);
 
-  // Handle successful save
+  // Handle action results
   useEffect(() => {
-    if (actionData && 'success' in actionData && actionData.success && isSaving) {
-      setIsSaving(false);
-      setShouldResetForm(true); // Flag that we should reset form after revalidation
-      if (shopify) {
-        shopify.toast.show(actionData.message, { duration: 3000 });
-      }
-      // Revalidate to refresh the data and sync form state
-      revalidator.revalidate();
-    } else if (actionData && 'error' in actionData && actionData.error && isSaving) {
-      setIsSaving(false);
-      // Show error toast if shopify is available
-      if (shopify) {
-        shopify.toast.show(actionData.error, { duration: 5000, isError: true });
+    if (actionData && shopify) {
+      if ('success' in actionData && actionData.success) {
+        // Show success toast
+        shopify.toast.show(actionData.message, {duration: 3000});
+
+        // Revalidate to refresh the data
+        revalidator.revalidate();
+      } else if ('error' in actionData && actionData.error) {
+        // Show error toast
+        shopify.toast.show(actionData.error, {duration: 8000, isError: true});
+
+        // Scroll to top to ensure error banner is visible
+        if (typeof window !== 'undefined') {
+          window.scrollTo({top: 0, behavior: 'smooth'});
+        }
       }
     }
-  }, [actionData, isSaving, shopify, revalidator]);
-
-  // Reset form when revalidation completes with fresh data (only after successful save)
-  useEffect(() => {
-    if (shouldResetForm && revalidator.state === "idle" && isSaving === false) {
-      // Reset the form with the updated data from the loader
-      isEnabled.onChange(product.isEnabled ?? false);
-      selectedStyles.onChange(initialSelectedStyles || []);
-      setShouldResetForm(false); // Clear the flag
-    }
-  }, [shouldResetForm, revalidator.state, isSaving, product.isEnabled, initialSelectedStyles]);
-
-  const variants = shopifyProduct?.variants?.edges?.map(edge => edge.node) || [];
-
-  const variantsMarkup = variants.length > 0 ? (
-    <IndexTable
-      resourceName={{ singular: 'variant', plural: 'variants' }}
-      itemCount={variants.length}
-      headings={[
-        { title: 'Image' },
-        { title: 'Title' },
-        { title: 'Available' },
-        { title: 'Print Area Size' },
-      ]}
-      selectable={false}
-    >
-      {variants.map((variant: ShopifyVariant, index: number) => (
-        <IndexTable.Row id={variant.id} key={variant.id} position={index}>
-          <IndexTable.Cell>
-            <Thumbnail
-              source={variant.image?.url || (shopifyProduct && shopifyProduct.images?.edges?.[0]?.node?.url) || ImageIcon}
-              alt={variant.image?.altText || variant.title}
-              size="small"
-            />
-          </IndexTable.Cell>
-          <IndexTable.Cell>
-            <Text variant="bodyMd" fontWeight="semibold" as="span">
-              {variant.title}
-            </Text>
-            {variant.selectedOptions.length > 0 && (
-              <Text variant="bodySm" tone="subdued" as="p">
-                {variant.selectedOptions.map(option => `${option.name}: ${option.value}`).join(', ')}
-              </Text>
-            )}
-            <Text variant="bodySm" tone="subdued" as="p">
-              SKU: {variant.sku || '-'}
-            </Text>
-            <Text variant="bodySm" tone="subdued" as="p">
-              Price: {variant.price} {variant.compareAtPrice && (
-                <Text variant="bodySm" tone="subdued" as="span">
-                  Compare at: ${variant.compareAtPrice}
-                </Text>
-              )}
-            </Text>
-          </IndexTable.Cell>
-          <IndexTable.Cell>
-            <Badge tone={variant.availableForSale ? "success" : "critical"}>
-              {variant.availableForSale ? "Available" : "Unavailable"}
-            </Badge>
-          </IndexTable.Cell>
-          <IndexTable.Cell>
-            <InlineStack wrap={false} gap="100" align="center" blockAlign="center">
-              <TextField
-                label="Print Area Width"
-                autoComplete="off"
-                labelHidden
-              />
-              <Text variant="bodyMd" as="span">&times;</Text>
-              <TextField
-                label="Print Area Height"
-                autoComplete="off"
-                labelHidden
-              />
-              px
-            </InlineStack>
-          </IndexTable.Cell>
-        </IndexTable.Row>
-      ))}
-    </IndexTable>
-  ) : (
-    <Text variant="bodyMd" tone="subdued" as="p">
-      No variants found for this product.
-    </Text>
-  );
+  }, [actionData, shopify, revalidator]);
 
   return (
-    <>
-      <TitleBar title={`Product: ${product.title}`}      >
-        <BreadcrumbLink
-          to="/app/products"
-        >
+    <Page title={`${product.title}`}
+          backAction={{
+            content: 'Products',
+            onAction: () => navigate('/app/products'),
+          }}
+    >
+      <TitleBar title={`${product.title}`}>
+        <BreadcrumbLink to="/app/products">
           Products
         </BreadcrumbLink>
       </TitleBar>
 
       <BlockStack gap="500">
-        {updateNeeded && (
-          <Banner tone="info">
-            Product title was automatically updated from Shopify to keep data in sync.
+        {/* Error Banner */}
+        {hasError && (
+          <Banner tone="critical" onDismiss={() => window.location.reload()}>
+            <BlockStack gap="200">
+              <Text variant="bodyMd" fontWeight="semibold" as="p">
+                Action Failed
+              </Text>
+              <Text variant="bodyMd" as="p">
+                {errorMessage}
+              </Text>
+              <Text variant="bodySm" tone="subdued" as="p">
+                This error has also been shown as a notification. Click the × to dismiss and try again.
+              </Text>
+            </BlockStack>
           </Banner>
         )}
 
-        {actionData && 'error' in actionData && (
-          <Banner tone="critical">
-            {actionData.error}
+        {/* Success Banner */}
+        {successMessage && (
+          <Banner tone="success">
+            <Text variant="bodyMd" as="p">
+              {successMessage}
+            </Text>
+          </Banner>
+        )}
+
+        {state.data.updateNeeded && (
+          <Banner tone="info">
+            Product title was automatically updated from Shopify to keep data in sync.
           </Banner>
         )}
 
         <Layout>
           <Layout.Section>
             <BlockStack gap="400">
-              <Button
-                variant="tertiary"
-                onClick={handleBackClick}
-                icon={ArrowLeftIcon}
-                disabled={isLoading}
-              >
-                Back to Products
-              </Button>
-
+              {/* Product Details Card */}
               <Card>
                 <BlockStack gap="400">
                   <InlineStack gap="400" align="start">
@@ -729,8 +1028,8 @@ export default function ProductDetailPage() {
                       </Text>
 
                       <InlineStack gap="300">
-                        <Badge tone={isEnabled.value ? "success" : "attention"}>
-                          {isEnabled.value ? "AI Enabled" : "AI Disabled"}
+                        <Badge tone={state.current.isEnabled ? "success" : "attention"}>
+                          {state.current.isEnabled ? "AI Enabled" : "AI Disabled"}
                         </Badge>
                         {shopifyProduct?.status && (
                           <Badge tone={shopifyProduct.status === 'ACTIVE' ? "success" : "attention"}>
@@ -741,10 +1040,9 @@ export default function ProductDetailPage() {
 
                       <Checkbox
                         label="Enable for AI Generation"
-                        checked={isEnabled.value}
-                        onChange={isEnabled.onChange}
+                        checked={state.current.isEnabled}
+                        onChange={toggleEnabled}
                         helpText="When enabled, customers can generate AI art for this product."
-                        error={isEnabled.error}
                         disabled={isLoading}
                       />
 
@@ -757,205 +1055,136 @@ export default function ProductDetailPage() {
                         </Text>
                       </BlockStack>
 
-                                             <InlineStack gap="300">
-                         {shopifyProduct && (
-                           <Button 
-                             variant="secondary"
-                             size="slim"
-                             url={`https://${shop}/products/${shopifyProduct.handle}`}
-                             target="_blank"
-                             disabled={isLoading}
-                           >
-                             View in Shop
-                           </Button>
-                         )}
-                         {shopifyProduct && (
-                           <Button 
-                             variant="secondary"
-                             size="slim"
-                             url={`https://${shop}/admin/products/${product.shopifyProductId}`}
-                             target="_blank"
-                             disabled={isLoading}
-                           >
-                             Edit in Shopify
-                           </Button>
-                         )}
-                       </InlineStack>
+                      <InlineStack gap="300">
+                        {shopifyProduct && (
+                          <InlineStack gap="300">
+                            <Button
+                              url={`https://${state.data.shop}/products/${shopifyProduct.handle}`}
+                              target="_blank"
+                              external
+                              variant="plain"
+                              size="slim"
+                            >
+                              View in Shop
+                            </Button>
+                            <Button
+                              url={`https://${state.data.shop}/admin/products/${product.shopifyProductId}`}
+                              target="_blank"
+                              external
+                              variant="plain"
+                              size="slim"
+                            >
+                              Edit in Shopify
+                            </Button>
+                          </InlineStack>
+                        )}
+                      </InlineStack>
                     </BlockStack>
                   </InlineStack>
                 </BlockStack>
               </Card>
 
+              {/* AI Style Selection Card */}
+              <AiStyleSelection
+                aiStyles={state.data.aiStyles}
+                onToggleStyle={toggleStyle}
+                selectedStyles={state.current.selectedStyles}
+                onSelectedStylesChange={setSelectedStyles}
+                isLoading={isLoading}
+              />
+
+              {/* Product Bases Selection Card */}
               <Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingMd">
-                    AI Styles Selection
+                    Product Bases Selection
                   </Text>
 
-                  {aiStyles.length > 0 ? (
+                  {state.data.productBases.length > 0 ? (
                     <BlockStack gap="400">
                       <Text variant="bodyMd" as="p" tone="subdued">
-                        Select which AI styles are available for this product. Customers will be able to choose from the selected styles when generating images.
+                        Select which product bases apply to this product. Product bases define the physical variants
+                        that customers can choose from.
                       </Text>
-                      
-                      {selectedStyles.value.length > 0 && (
-                        <Text variant="bodySm" as="p" tone="subdued">
-                          💡 <strong>Selected styles appear first and are numbered in order.</strong> Drag and drop to reorder them - this controls the order customers see when generating images.
-                        </Text>
-                      )}
 
                       <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-                        gap: '16px'
+                        border: '1px solid var(--p-border-subdued)',
+                        borderRadius: 'var(--p-border-radius-200)',
+                        overflow: 'hidden'
                       }}>
-                        {/* Show selected styles first, in order */}
-                        {selectedStyles.value.map((styleUuid, index) => {
-                          const style = aiStyles.find(s => s.uuid === styleUuid);
-                          if (!style) return null;
-                          
-                          const isDragging = draggedItem === styleUuid;
-                          const isDraggedOver = draggedOverItem === styleUuid;
-                          
+                        {state.data.productBases.map((productBase, index) => {
+                          const isSelected = state.current.selectedProductBases.includes(productBase.uuid);
+                          const isLast = index === state.data.productBases.length - 1;
+
                           return (
                             <div
-                              key={`selected-${style.id}`}
-                              draggable={!isLoading}
-                              onDragStart={(e) => handleDragStart(e, styleUuid)}
-                              onDragOver={(e) => handleDragOver(e, styleUuid)}
-                              onDragLeave={handleDragLeave}
-                              onDrop={(e) => handleDrop(e, styleUuid)}
-                              onClick={isLoading ? undefined : () => handleStyleToggle(style.uuid, false)}
+                              key={productBase.id}
                               style={{
-                                cursor: isLoading ? 'not-allowed' : 'grab',
-                                transition: 'all 0.15s ease',
-                                transform: isDragging ? 'scale(1.05)' : 'scale(1.02)',
-                                opacity: isLoading ? 0.6 : (isDragging ? 0.8 : 1),
-                                border: isDraggedOver ? '2px dashed #0066cc' : 'none',
-                                position: 'relative',
-                              }}
-                            >
-                              <div style={{ position: 'relative' }}>
-                                <Card
-                                  background="bg-surface-selected"
-                                  padding="300"
-                                >
-                                  <InlineStack gap="300" align="start" blockAlign="center">
-                                    <div style={{ 
-                                      backgroundColor: '#0066cc', 
-                                      color: 'white', 
-                                      borderRadius: '50%', 
-                                      width: '24px', 
-                                      height: '24px', 
-                                      display: 'flex', 
-                                      alignItems: 'center', 
-                                      justifyContent: 'center', 
-                                      fontSize: '12px', 
-                                      fontWeight: 'bold',
-                                      flexShrink: 0
-                                    }}>
-                                      {index + 1}
-                                    </div>
-                                    {style.exampleImageUrl && (
-                                      <div style={{ flexShrink: 0 }}>
-                                        <Thumbnail
-                                          source={style.exampleImageUrl}
-                                          alt={style.name}
-                                          size="small"
-                                        />
-                                      </div>
-                                    )}
-                                    <BlockStack gap="100">
-                                      <Text variant="bodyMd" fontWeight="semibold" as="span">
-                                        {style.name}
-                                      </Text>
-                                      <div style={{ alignSelf: 'flex-start' }}>
-                                        <Badge
-                                          tone={style.isActive ? "success" : "critical"}
-                                          size="small"
-                                        >
-                                          {style.isActive ? "Active" : "Inactive"}
-                                        </Badge>
-                                      </div>
-                                    </BlockStack>
-                                  </InlineStack>
-                                </Card>
-                                <div style={{
-                                  position: 'absolute',
-                                  top: '12px',
-                                  right: '12px',
-                                  zIndex: 1
-                                }}>
-                                  <Checkbox
-                                    label={`Disable ${style.name} for this product`}
-                                    labelHidden
-                                    checked={true}
-                                    onChange={() => handleStyleToggle(style.uuid, false)}
-                                    disabled={isLoading}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        
-                        {/* Show unselected styles */}
-                        {aiStyles.filter(style => !selectedStyles.value.includes(style.uuid)).map((style: AiStyle) => {
-                          return (
-                            <div
-                              key={`unselected-${style.id}`}
-                              onClick={isLoading ? undefined : () => handleStyleToggle(style.uuid, true)}
-                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '12px 16px',
+                                backgroundColor: isSelected ? 'var(--p-surface-selected)' : 'var(--p-surface)',
+                                borderBottom: isLast ? 'none' : '1px solid var(--p-border-subdued)',
                                 cursor: isLoading ? 'not-allowed' : 'pointer',
-                                transition: 'all 0.15s ease',
-                                transform: 'scale(1)',
-                                opacity: isLoading ? 0.6 : 1,
+                                transition: 'background-color 0.1s ease',
+                              }}
+                              onClick={isLoading ? undefined : () => {
+                                const newIsSelected = !isSelected;
+                                toggleProductBase(productBase.uuid, newIsSelected);
+
+                                // If deselecting a product base, clean up orphaned mappings
+                                if (!newIsSelected) {
+                                  // Get all product base variant IDs that are still valid
+                                  const validProductBaseVariantIds = state.data.productBaseVariants
+                                    .filter(v => {
+                                      // Check if the variant's product base is still selected
+                                      const productBaseUuid = v.productBase?.uuid;
+                                      const productBaseStillSelected = productBaseUuid &&
+                                        state.current.selectedProductBases
+                                          .filter(uuid => uuid !== productBase.uuid) // Exclude the one being deselected
+                                          .includes(productBaseUuid);
+                                      return productBaseStillSelected;
+                                    })
+                                    .map(v => v.id);
+
+                                  // Clear orphaned mappings
+                                  clearOrphanedMappings(validProductBaseVariantIds);
+                                }
                               }}
                             >
-                              <div style={{ position: 'relative' }}>
-                                <Card
-                                  background="bg-surface-secondary"
-                                  padding="300"
-                                >
-                                  <InlineStack gap="300" align="start" blockAlign="center">
-                                    {style.exampleImageUrl && (
-                                      <div style={{ flexShrink: 0 }}>
-                                        <Thumbnail
-                                          source={style.exampleImageUrl}
-                                          alt={style.name}
-                                          size="small"
-                                        />
-                                      </div>
+                              <div style={{marginRight: '12px', flexShrink: 0}}>
+                                <Checkbox
+                                  label={`${isSelected ? 'Remove' : 'Add'} ${productBase.name}`}
+                                  labelHidden
+                                  checked={isSelected}
+                                  onChange={() => toggleProductBase(productBase.uuid, !isSelected)}
+                                  disabled={isLoading}
+                                />
+                              </div>
+                              <div style={{flex: 1, minWidth: 0}}>
+                                <BlockStack gap="100">
+                                  <InlineStack gap="200" align="start">
+                                    <Text variant="bodyMd" fontWeight="semibold" as="span">
+                                      {productBase.name}
+                                    </Text>
+                                    <Badge
+                                      tone={productBase.isActive ? "success" : "critical"}
+                                      size="small"
+                                    >
+                                      {productBase.isActive ? "Active" : "Inactive"}
+                                    </Badge>
+                                    {isSelected && (
+                                      <Badge tone="info" size="small">
+                                        Selected
+                                      </Badge>
                                     )}
-                                    <BlockStack gap="100">
-                                      <Text variant="bodyMd" fontWeight="semibold" as="span">
-                                        {style.name}
-                                      </Text>
-                                      <div style={{ alignSelf: 'flex-start' }}>
-                                        <Badge
-                                          tone={style.isActive ? "success" : "critical"}
-                                          size="small"
-                                        >
-                                          {style.isActive ? "Active" : "Inactive"}
-                                        </Badge>
-                                      </div>
-                                    </BlockStack>
                                   </InlineStack>
-                                </Card>
-                                <div style={{
-                                  position: 'absolute',
-                                  top: '12px',
-                                  right: '12px',
-                                  zIndex: 1
-                                }}>
-                                  <Checkbox
-                                    label={`Enable ${style.name} for this product`}
-                                    labelHidden
-                                    checked={false}
-                                    onChange={() => handleStyleToggle(style.uuid, true)}
-                                    disabled={isLoading}
-                                  />
-                                </div>
+                                  {productBase.description && (
+                                    <Text variant="bodySm" tone="subdued" as="span">
+                                      {productBase.description}
+                                    </Text>
+                                  )}
+                                </BlockStack>
                               </div>
                             </div>
                           );
@@ -964,13 +1193,14 @@ export default function ProductDetailPage() {
 
                       <InlineStack gap="200" align="space-between">
                         <Text variant="bodySm" tone="subdued" as="span">
-                          {selectedStyles.value.length} of {aiStyles.length} styles selected
+                          {state.current.selectedProductBases.length} of {state.data.productBases.length} product bases
+                          selected
                         </Text>
-                        {selectedStyles.value.length > 0 && (
+                        {state.current.selectedProductBases.length > 0 && (
                           <Button
-                            variant="plain"
-                            size="slim"
-                            onClick={() => selectedStyles.onChange([])}
+                            variant={'plain'}
+                            size={'slim'}
+                            onClick={() => setSelectedProductBases([])}
                             disabled={isLoading}
                           >
                             Clear all
@@ -981,76 +1211,341 @@ export default function ProductDetailPage() {
                   ) : (
                     <BlockStack gap="300">
                       <Text variant="bodyMd" tone="subdued" as="p">
-                        No AI styles have been created yet.
+                        No product bases have been created yet.
                       </Text>
-                      <Button variant="primary" url="/app/styles" disabled={isLoading}>
-                        Create AI Styles
+                      <Button variant="primary" url="/app/productbase" disabled={isLoading}>
+                        Create Product Bases
                       </Button>
                     </BlockStack>
                   )}
                 </BlockStack>
               </Card>
 
+              {/* Variant Mapping Card */}
               <Card>
                 <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">
-                    Product Variants ({variants.length})
-                  </Text>
-                  {variantsMarkup}
-                </BlockStack>
-              </Card>
+                  <InlineStack gap="300" align="space-between">
+                    <Text as="h2" variant="headingMd">
+                      Product Variants
+                      {state.current.selectedProductBases.length > 0 ?
+                        ` (${state.data.shopifyProduct?.variants?.edges?.length || 0} Shopify + ${state.data.productBaseVariants.filter(v =>
+                          !state.current.variantMappings.some(m => m.productBaseVariantId === v.id)
+                        ).length} Unmapped Product Base)` :
+                        ` (${state.data.shopifyProduct?.variants?.edges?.length || 0})`
+                      }
+                    </Text>
 
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">
-                    Available Sizes for AI Generation
-                  </Text>
+                    {state.current.selectedProductBases.length > 0 && (
+                      <InlineStack gap="200">
+                        {/* Create Missing Variants Button */}
+                        {state.data.productBaseVariants.filter(v =>
+                          !state.current.variantMappings.some(m => m.productBaseVariantId === v.id)
+                        ).length > 0 && (
+                          <button
+                            className="Polaris-Button Polaris-Button--sizeSlim Polaris-Button--secondary"
+                            onClick={() => {
+                              setCreatingVariants(true);
 
-                  {sizes.length > 0 ? (
-                    <BlockStack gap="300">
-                      {sizes.map((size: Size) => (
-                        <Card key={size.id} background="bg-surface-secondary">
-                          <InlineStack gap="400" align="space-between">
-                            <BlockStack gap="100">
-                              <Text variant="bodyMd" fontWeight="semibold" as="span">
-                                {size.name}
-                              </Text>
-                              <Text variant="bodySm" tone="subdued" as="span">
-                                {size.widthPx} × {size.heightPx} pixels
-                              </Text>
-                            </BlockStack>
-                            <Badge tone={size.isActive ? "success" : "critical"}>
-                              {size.isActive ? "Active" : "Inactive"}
-                            </Badge>
-                          </InlineStack>
-                        </Card>
-                      ))}
-                    </BlockStack>
+                              // Get unmapped product base variants
+                              const unmappedVariants = state.data.productBaseVariants.filter(v =>
+                                !state.current.variantMappings.some(m => m.productBaseVariantId === v.id)
+                              );
+
+                              // Prepare variants to create
+                              const variantsToCreate = unmappedVariants.map(variant => {
+                                // Get option values for this variant
+                                const options = state.data.productBaseVariantOptionValues
+                                  .filter(v => v.productBaseVariantId === variant.id)
+                                  .map(v => {
+                                    const option = state.data.productBaseOptions.find(o => o.id === v.productBaseOptionId);
+                                    return {
+                                      name: option?.name || '',
+                                      value: v.value
+                                    };
+                                  });
+
+                                return {
+                                  productBaseVariantId: variant.id,
+                                  options
+                                };
+                              });
+
+                              // Submit the form
+                              const formData = new FormData();
+                              formData.append("action", "create_variants");
+                              formData.append("variantsToCreate", JSON.stringify(variantsToCreate));
+                              handleSubmit(formData);
+                            }}
+                            disabled={isLoading || creatingVariants}
+                            type="button"
+                          >
+                            {creatingVariants ? 'Creating Variants...' : `Create All Missing Variants (${
+                              state.data.productBaseVariants.filter(v =>
+                                !state.current.variantMappings.some(m => m.productBaseVariantId === v.id)
+                              ).length
+                            })`}
+                          </button>
+                        )}
+
+                        {/* Note about variant mappings being saved automatically */}
+                        <Text variant="bodySm" tone="subdued" as="span">
+                          Variant mappings are saved automatically when you save changes
+                        </Text>
+                      </InlineStack>
+                    )}
+                  </InlineStack>
+
+                  {/* Variant Mapping Table - Simplified Version */}
+                  {state.data.shopifyProduct?.variants?.edges?.length > 0 || state.data.productBaseVariants.length > 0 ? (
+                    <IndexTable
+                      resourceName={{ singular: 'variant', plural: 'variants' }}
+                      itemCount={
+                        (state.data.shopifyProduct?.variants?.edges?.length || 0) +
+                        (state.current.selectedProductBases.length > 0 ?
+                          state.data.productBaseVariants.filter(v => !state.current.variantMappings.some(m => m.productBaseVariantId === v.id)).length :
+                          0)
+                      }
+                      headings={[
+                        { title: 'Variant Details' },
+                        { title: 'Price' },
+                        { title: 'Status' },
+                        ...(state.current.selectedProductBases.length > 0 ? [{ title: 'Product Base Mapping' }] : []),
+                        { title: 'Actions' }
+                      ]}
+                      selectable={false}
+                    >
+                      {/* Shopify Variants */}
+                      {state.data.shopifyProduct?.variants?.edges?.map((edge, index) => {
+                        const variant = edge.node;
+                        const mapping = state.current.variantMappings.find(m => String(m.shopifyVariantId) === extractShopifyId(variant.id));
+                        const mappedProductBaseVariant = mapping ?
+                          state.data.productBaseVariants.find(v => v.id === mapping.productBaseVariantId) :
+                          null;
+
+                        return (
+                          <IndexTable.Row
+                            id={variant.id}
+                            key={variant.id}
+                            position={index}
+                          >
+                            <IndexTable.Cell>
+                              <BlockStack gap="100">
+                                <Text variant="bodyMd" fontWeight="semibold" as="span">
+                                  {variant.title}
+                                </Text>
+                                {variant.selectedOptions?.length > 0 && (
+                                  <Text variant="bodySm" tone="subdued" as="p">
+                                    Options: {variant.selectedOptions.map(option => `${option.name}: ${option.value}`).join(', ')}
+                                  </Text>
+                                )}
+                                <Badge tone="info" size="small">Shopify Variant</Badge>
+                              </BlockStack>
+                            </IndexTable.Cell>
+                            <IndexTable.Cell>
+                              {state.current.editingVariantPrices[variant.id] ? (
+                                <InlineStack gap="200" align="start">
+                                  <input
+                                    type="number"
+                                    value={state.current.editingVariantPrices[variant.id]}
+                                    onChange={(e) => setEditingVariantPrice(variant.id, e.target.value)}
+                                    style={{
+                                      padding: '8px',
+                                      borderRadius: '4px',
+                                      border: '1px solid #ccc',
+                                      width: '100px'
+                                    }}
+                                  />
+                                  <Button
+                                    variant={'primary'}
+                                    size={'slim'}
+                                    onClick={() => {
+                                      // Submit the form to update the variant price
+                                      const formData = new FormData();
+                                      formData.append("action", "update_variant_price");
+                                      formData.append("variantId", variant.id);
+                                      formData.append("newPrice", state.current.editingVariantPrices[variant.id]);
+                                      handleSubmit(formData);
+
+                                      // Clear the editing state
+                                      setEditingVariantPrice(variant.id, null);
+                                    }}
+                                    disabled={isLoading}
+                                  >
+                                    Save
+                                  </Button>
+                                  <Button
+                                    size={'slim'}
+                                    onClick={() => setEditingVariantPrice(variant.id, null)}
+                                    disabled={isLoading}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </InlineStack>
+                              ) : (
+                                <InlineStack gap="200" align="start">
+                                  <Text variant="bodyMd" as="span">
+                                    ${variant.price}
+                                  </Text>
+                                  <Button
+                                    size={'slim'}
+                                    onClick={() => setEditingVariantPrice(variant.id, variant.price)}
+                                    disabled={isLoading}
+                                  >
+                                    Edit
+                                  </Button>
+                                </InlineStack>
+                              )}
+                            </IndexTable.Cell>
+                            <IndexTable.Cell>
+                              <Badge tone={variant.availableForSale ? "success" : "critical"}>
+                                {variant.availableForSale ? "Available" : "Unavailable"}
+                              </Badge>
+                            </IndexTable.Cell>
+                            {state.current.selectedProductBases.length > 0 && (
+                              <IndexTable.Cell>
+                                <select
+                                  value={mapping?.productBaseVariantId || ''}
+                                  onChange={(e) => {
+                                    const productBaseVariantId = e.target.value ? parseInt(e.target.value) : null;
+                                    if (productBaseVariantId) {
+                                      // Adding or changing a mapping
+                                      // Pass the productBaseVariantId and shopifyVariantId to create/update the mapping
+                                      // Extract the numeric ID from the Shopify variant's GID
+                                      updateVariantMapping(productBaseVariantId, extractShopifyId(variant.id));
+                                    } else {
+                                      // Removing a mapping - if mapping exists, remove it
+                                      // Fixed: When selecting "No Mapping", properly remove the existing mapping
+                                      // by passing the existing productBaseVariantId and null for shopifyVariantId
+                                      if (mapping) {
+                                        updateVariantMapping(mapping.productBaseVariantId, null);
+                                      }
+                                    }
+                                  }}
+                                  disabled={isLoading}
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #ccc',
+                                    minWidth: '200px'
+                                  }}
+                                >
+                                  <option value="">— No Mapping —</option>
+                                  {state.data.productBaseVariants.map(baseVariant => (
+                                    <option key={baseVariant.id} value={baseVariant.id}>
+                                      {baseVariant.productBase?.name} - {baseVariant.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {mappedProductBaseVariant && (
+                                  <Text variant="bodySm" tone="subdued" as="p">
+                                    {mappedProductBaseVariant.widthPx} × {mappedProductBaseVariant.heightPx}px
+                                  </Text>
+                                )}
+                              </IndexTable.Cell>
+                            )}
+                            <IndexTable.Cell>
+                              {!mapping && (
+                                <Button
+                                  variant={'plain'}
+                                  tone={'critical'}
+                                  size={'slim'}
+                                  onClick={() => {
+                                    if (confirm("Are you sure you want to delete this variant? This action cannot be undone.")) {
+                                      // Submit the form to delete the variant
+                                      const formData = new FormData();
+                                      formData.append("action", "delete_variant");
+                                      formData.append("variantId", variant.id);
+                                      handleSubmit(formData);
+                                    }
+                                  }}
+                                  disabled={isLoading}
+                                >
+                                  Delete Shopify Variant
+                                </Button>
+                              )}
+                            </IndexTable.Cell>
+                          </IndexTable.Row>
+                        );
+                      })}
+
+                      {/* Unmapped Product Base Variants */}
+                      {state.current.selectedProductBases.length > 0 &&
+                        state.data.productBaseVariants
+                          .filter(v => !state.current.variantMappings.some(m => m.productBaseVariantId === v.id))
+                          .map((baseVariant, index) => (
+                            <IndexTable.Row
+                              id={`unmapped-${baseVariant.id}`}
+                              key={`unmapped-${baseVariant.id}`}
+                              position={(state.data.shopifyProduct?.variants?.edges?.length || 0) + index}
+                            >
+                              <IndexTable.Cell>
+                                <BlockStack gap="100">
+                                  <Text variant="bodyMd" fontWeight="semibold" as="span">
+                                    {baseVariant.productBase?.name} - {baseVariant.name}
+                                  </Text>
+                                  <Text variant="bodySm" tone="subdued" as="p">
+                                    Dimensions: {baseVariant.widthPx} × {baseVariant.heightPx}px
+                                  </Text>
+                                  <Badge tone="warning" size="small">Product Base Variant</Badge>
+                                </BlockStack>
+                              </IndexTable.Cell>
+                              <IndexTable.Cell>
+                                <Text variant="bodySm" tone="subdued" as="span">
+                                  No Shopify variant
+                                </Text>
+                              </IndexTable.Cell>
+                              <IndexTable.Cell>
+                                <Badge tone="critical">
+                                  Needs Shopify Variant
+                                </Badge>
+                              </IndexTable.Cell>
+                              <IndexTable.Cell>
+                              </IndexTable.Cell>
+                              <IndexTable.Cell>
+                                <Button
+                                  variant={'primary'}
+                                  size={'slim'}
+                                  onClick={() => {
+                                    setCreatingVariants(true);
+
+                                    // Get option values for this variant
+                                    const options = state.data.productBaseVariantOptionValues
+                                      .filter(v => v.productBaseVariantId === baseVariant.id)
+                                      .map(v => {
+                                        const option = state.data.productBaseOptions.find(o => o.id === v.productBaseOptionId);
+                                        return {
+                                          name: option?.name || '',
+                                          value: v.value
+                                        };
+                                      });
+
+                                    // Prepare variant to create
+                                    const variantsToCreate = [{
+                                      productBaseVariantId: baseVariant.id,
+                                      options
+                                    }];
+
+                                    // Submit the form using the handleSubmit function
+                                    const formData = new FormData();
+                                    formData.append("action", "create_variants");
+                                    formData.append("variantsToCreate", JSON.stringify(variantsToCreate));
+                                    handleSubmit(formData);
+                                  }}
+                                  disabled={isLoading || creatingVariants}
+                                >
+                                  {creatingVariants ? 'Creating...' : 'Create Shopify Variant'}
+                                </Button>
+                              </IndexTable.Cell>
+                            </IndexTable.Row>
+                          ))
+                      }
+                    </IndexTable>
                   ) : (
                     <Text variant="bodyMd" tone="subdued" as="p">
-                      No sizes configured for this product yet. Add sizes to allow customers to select different image dimensions.
+                      No variants found for this product.
                     </Text>
                   )}
-                </BlockStack>
-              </Card>
-
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">
-                    Quick Actions
-                  </Text>
-
-                  <InlineStack gap="300">
-                    <Button variant="secondary" disabled={isLoading}>
-                      Manage Sizes
-                    </Button>
-                    <Button variant="secondary" disabled={isLoading}>
-                      View Analytics
-                    </Button>
-                    <Button variant="secondary" disabled={isLoading}>
-                      Configure AI Styles
-                    </Button>
-                  </InlineStack>
                 </BlockStack>
               </Card>
             </BlockStack>
@@ -1062,19 +1557,19 @@ export default function ProductDetailPage() {
       <SaveBar id="product-edit-save-bar">
         <button
           variant="primary"
-          onClick={handleSave}
+          onClick={submitForm}
           loading={isLoading ? "" : undefined}
           disabled={isLoading}
         >
-          {isLoading ? "Saving..." : "Save Changes"}
+          {isSaving ? "Saving..." : "Save Changes"}
         </button>
         <button
-          onClick={handleDiscard}
+          onClick={resetForm}
           disabled={isLoading}
         >
           Discard
         </button>
       </SaveBar>
-    </>
+    </Page>
   );
-} 
+}

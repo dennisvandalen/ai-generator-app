@@ -19,6 +19,14 @@ export interface ProductSize {
   sortOrder: number | null;
 }
 
+export interface VariantDimensions {
+  variantId: string;
+  dimensions: {
+    width: number;
+    height: number;
+  };
+}
+
 export interface ProductData {
   enabled: boolean;
   product?: {
@@ -28,6 +36,7 @@ export interface ProductData {
   };
   styles?: ProductStyle[];
   sizes?: ProductSize[];
+  variants?: VariantDimensions[];
   config?: {
     totalStyles: number;
     totalSizes: number;
@@ -54,7 +63,7 @@ export class ProductDataAPI {
   async getProductData(productId: string | number): Promise<ProductData> {
     try {
       const url = `${this.baseUrl}/${productId}?shop=${this.shop}`;
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -128,10 +137,10 @@ export class ProductDataAPI {
 // Utility function to create API instance
 export function createProductDataAPI(shop?: string): ProductDataAPI {
   // Try to get shop from window.Shopify if not provided
-  const shopDomain = shop || 
-    (typeof window !== 'undefined' && (window as any).Shopify?.shop) || 
+  const shopDomain = shop ||
+    (typeof window !== 'undefined' && (window as any).Shopify?.shop) ||
     '';
-  
+
   if (!shopDomain) {
     throw new Error('Shop domain is required. Please provide it or ensure window.Shopify.shop is available.');
   }
@@ -144,12 +153,12 @@ export async function loadProductDataForPDP(productId: string | number) {
   try {
     const api = createProductDataAPI();
     const data = await api.getProductData(productId);
-    
+
     if (data.enabled) {
       console.log('AI Generation is enabled for this product');
       console.log('Available styles:', data.styles);
       console.log('Available sizes:', data.sizes);
-      
+
       // Show AI generation UI
       return data;
     } else {
@@ -160,4 +169,4 @@ export async function loadProductDataForPDP(productId: string | number) {
     console.error('Failed to load product data:', error);
     return null;
   }
-} 
+}

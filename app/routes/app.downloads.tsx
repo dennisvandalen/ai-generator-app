@@ -11,12 +11,12 @@ import {
   EmptyState,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+import { authenticate } from "~/shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  
-  return { 
+
+  return {
     shop: session.shop,
     readyDownloads: [], // Placeholder
     processingQueue: [], // Placeholder
@@ -24,7 +24,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function DownloadsPage() {
-  const { shop, readyDownloads, processingQueue } = useLoaderData<typeof loader>();
+  const { readyDownloads, processingQueue } = useLoaderData<typeof loader>();
 
   return (
     <Page>
@@ -46,7 +46,7 @@ export default function DownloadsPage() {
                     Access and download high-resolution AI-generated pet artwork for completed orders.
                     Files are automatically generated after order placement.
                   </Text>
-                  
+
                   {/* Quick Stats */}
                   <Layout>
                     <Layout.Section variant="oneHalf">
@@ -83,4 +83,4 @@ export default function DownloadsPage() {
       </BlockStack>
     </Page>
   );
-} 
+}

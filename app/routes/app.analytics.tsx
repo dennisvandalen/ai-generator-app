@@ -8,19 +8,19 @@ import {
   BlockStack,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
+import { authenticate } from "~/shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  
-  return { 
+
+  return {
     shop: session.shop,
     analytics: {
       totalGenerations: 0,
       totalRevenue: 0,
       popularStyles: [],
       customerInsights: {},
-    }, // Placeholder
+    },
   };
 };
 
@@ -82,4 +82,4 @@ export default function AnalyticsPage() {
       </BlockStack>
     </Page>
   );
-} 
+}

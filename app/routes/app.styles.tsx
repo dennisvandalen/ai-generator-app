@@ -1,20 +1,15 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { Outlet } from "@remix-run/react";
-import { Page, BlockStack } from "@shopify/polaris";
-import { authenticate } from "../shopify.server";
+import type {LoaderFunctionArgs} from "@remix-run/node";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+import {Outlet} from "@remix-run/react";
+import {authenticate} from "~/shopify.server";
+
+export const loader = async ({request}: LoaderFunctionArgs) => {
   await authenticate.admin(request);
-  return json({});
+  return Response.json({});
 };
 
 export default function StylesLayout() {
   return (
-    <Page>
-      <BlockStack gap="500">
-        <Outlet />
-      </BlockStack>
-    </Page>
+    <Outlet/>
   );
-} 
+}

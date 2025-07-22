@@ -5,7 +5,7 @@ import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 
-import { authenticate } from "../shopify.server";
+import { authenticate } from "~/shopify.server";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
@@ -13,17 +13,17 @@ const DEBUG_REQUESTS = process.env.DEBUG_REQUESTS === 'true' || process.env.NODE
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
-  
+
   if (DEBUG_REQUESTS) {
     console.log(`[APP_LAYOUT] Loading app layout: ${url.pathname} | URL: ${request.url}`);
-    
+
     // Log request details before authentication
     const shopParam = url.searchParams.get('shop');
     console.log(`[APP_LAYOUT] Shop from URL params: ${shopParam}`);
   }
-  
-  const { admin, session } = await authenticate.admin(request);
-  
+
+  const { session } = await authenticate.admin(request);
+
   if (DEBUG_REQUESTS) {
     // Log session details after authentication
     console.log(`[APP_LAYOUT] Session shop: ${session?.shop || 'null'}`);
@@ -63,7 +63,7 @@ export default function App() {
           Settings
         </Link>
       </NavMenu>
-      
+
       <div style={{paddingBottom: "100px"}}>
         <Outlet />
       </div>

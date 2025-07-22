@@ -1,0 +1,1 @@
+ALTER TABLE `productBases` DROP COLUMN `aspectRatio`;

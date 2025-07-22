@@ -13,7 +13,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
-import { json } from "@remix-run/node";
+
 import { AppPermissions } from "../components/AppPermissions";
 
 // GraphQL query to get current app scopes
@@ -30,46 +30,46 @@ const GET_APP_SCOPES_QUERY = `
 `;
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
   const formData = await request.formData();
   const action = formData.get("action");
 
   if (action === "reauth") {
     // Get the current shop domain
     const shop = session.shop;
-    
+
     // Get the configured scopes from environment
     const configuredScopes = process.env.SCOPES?.split(",") || [];
     const scopesParam = configuredScopes.join(",");
-    
+
     // Return the OAuth URL for the component to handle
     const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${process.env.SHOPIFY_API_KEY}&scope=${scopesParam}&redirect_uri=${process.env.SHOPIFY_APP_URL}/auth/callback&state=${session.state || 'reauth'}`;
-    
-    return json({ redirectUrl: authUrl });
+
+    return Response.json({ redirectUrl: authUrl });
   }
 
-  return json({});
+  return Response.json({});
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
-  
+
   // Fetch current app scopes from Shopify
   const response = await admin.graphql(GET_APP_SCOPES_QUERY);
   const data = await response.json();
-  
+
   const accessScopes = data?.data?.currentAppInstallation?.accessScopes || [];
-  
+
   // Get configured scopes from environment to compare
   const configuredScopes = process.env.SCOPES?.split(",") || [];
   const grantedScopeHandles = accessScopes.map((scope: { handle: string }) => scope.handle);
-  
+
   // Check if there are missing scopes
   const missingScopes = configuredScopes.filter(scope => !grantedScopeHandles.includes(scope));
   const hasNewScopes = missingScopes.length > 0;
-  
+
   // TODO: Fetch shop settings, quotas, and watermark settings from database
-  return { 
+  return {
     shop: session.shop,
     planName: "basic", // Placeholder
     monthlyQuota: 500, // Placeholder
@@ -84,13 +84,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function SettingsPage() {
-  const { 
-    shop, 
-    planName, 
-    monthlyQuota, 
-    currentUsage, 
-    hasWatermark, 
-    watermarkUrl, 
+  const {
+    planName,
+    monthlyQuota,
+    currentUsage,
+    hasWatermark,
     accessScopes,
     configuredScopes,
     missingScopes,
@@ -171,10 +169,10 @@ export default function SettingsPage() {
                     </Button>
                   </InlineStack>
                   <Text variant="bodyMd" as="p">
-                    Upload and manage your shop's watermark/logo. Watermarks are automatically 
+                    Upload and manage your shop's watermark/logo. Watermarks are automatically
                     applied to preview images to protect your designs before purchase.
                   </Text>
-                  
+
                   {/* Watermark Status */}
                   <Layout>
                     <Layout.Section variant="oneHalf">
@@ -245,4 +243,4 @@ export default function SettingsPage() {
       </BlockStack>
     </Page>
   );
-} 
+}

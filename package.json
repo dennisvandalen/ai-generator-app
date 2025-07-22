@@ -16,6 +16,9 @@
     "docker-start": "npm run setup && npm run start",
     "setup": "drizzle-kit generate && drizzle-kit migrate",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "shopify": "shopify",
     "drizzle": "drizzle-kit",
     "graphql-codegen": "graphql-codegen",
@@ -43,7 +46,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.2.0",
     "drizzle-kit": "^0.31.4",
-    "drizzle-orm": "^0.44.2",
+    "drizzle-orm": "^0.40.0",
     "file-type": "^21.0.0",
     "isbot": "^5.1.0",
     "jimp": "^1.6.0",
@@ -58,6 +61,8 @@
     "@remix-run/eslint-config": "^2.16.1",
     "@remix-run/route-config": "^2.16.1",
     "@shopify/api-codegen-preset": "^1.1.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
     "@types/eslint": "^9.6.1",
     "@types/node": "^22.2.0",
     "@types/react": "^18.2.31",
@@ -67,10 +72,12 @@
     "concurrently": "^8.2.2",
     "eslint": "^8.42.0",
     "eslint-config-prettier": "^10.0.1",
+    "jsdom": "^26.1.0",
     "postcss": "^8.5.6",
     "prettier": "^3.2.4",
     "typescript": "^5.2.2",
-    "vite": "^6.2.2"
+    "vite": "^6.2.2",
+    "vitest": "^3.2.4"
   },
   "workspaces": [
     "extensions/*"

@@ -4,15 +4,21 @@ interface DebugPanelProps {
   aiConverterData: any;
   pageType: string;
   isThemeEditor: boolean;
+  variantId?: string | null;
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({
   aiConverterData,
   pageType,
-  isThemeEditor
+  isThemeEditor,
+  variantId
 }) => {
   const [generationState, setGenerationState] = useState(() => 
     (window as any).__aiGenerationState || { generationSelected: false, generationId: null, isInitialized: false }
+  );
+
+  const [currentVariantId, setCurrentVariantId] = useState(() => 
+    (window as any).__aiCurrentVariantId || variantId
   );
 
   // Listen for generation state changes via custom event
@@ -25,6 +31,19 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
 
     return () => {
       window.removeEventListener('aiGenerationStateChanged', handleStateChange as EventListener);
+    };
+  }, []);
+
+  // Listen for variant ID changes via custom event
+  useEffect(() => {
+    const handleVariantIdChange = (event: CustomEvent) => {
+      setCurrentVariantId(event.detail.variantId);
+    };
+
+    window.addEventListener('aiVariantIdChanged', handleVariantIdChange as EventListener);
+
+    return () => {
+      window.removeEventListener('aiVariantIdChanged', handleVariantIdChange as EventListener);
     };
   }, []);
 
@@ -58,6 +77,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
       <div><strong>Theme Editor:</strong> {isThemeEditor ? '🎨 YES' : '🌐 LIVE'}</div>
       <div><strong>Page:</strong> {pageType}</div>
       <div><strong>Product:</strong> {aiConverterData.productId || 'N/A'}</div>
+      <div><strong>Variant ID:</strong> {currentVariantId || 'N/A'}</div>
       <div><strong>AI Status:</strong> {aiStatus}</div>
       <div>
         <strong>Generation:</strong>{' '}

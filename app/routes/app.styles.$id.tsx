@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { redirect, data } from "@remix-run/node";
-import { useLoaderData, useSubmit, useActionData, Link } from "@remix-run/react";
+import {useLoaderData, useSubmit, useActionData, useNavigate} from "@remix-run/react";
 import {
   Layout,
   Text,
@@ -16,7 +16,7 @@ import {
   Modal,
   Spinner,
   Banner,
-  RadioButton,
+  RadioButton, Page,
 } from "@shopify/polaris";
 import { TitleBar, SaveBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -145,10 +145,12 @@ export default function EditStylePage() {
   const [isTestingGeneration, setIsTestingGeneration] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; imageUrl?: string; error?: string } | null>(null);
   const [selectedTestImage, setSelectedTestImage] = useState<'cat' | 'dog'>('cat');
-  
+
   // Use App Bridge hook with SSR safety
   const [isClient, setIsClient] = useState(false);
-  const shopify = isClient ? useAppBridge() : null;
+  const appBridge = useAppBridge();
+  const shopify = isClient ? appBridge : null;
+  const navigate = useNavigate();
 
   // Set client flag after hydration
   useEffect(() => {
@@ -171,7 +173,7 @@ export default function EditStylePage() {
   // Calculate if form is truly dirty by comparing with last saved data
   const isFormDirty = useMemo(() => {
     if (!lastSavedData) return isDirty;
-    
+
     return (
       currentFormData.name !== lastSavedData.name ||
       currentFormData.promptTemplate !== lastSavedData.promptTemplate ||
@@ -180,7 +182,7 @@ export default function EditStylePage() {
     );
   }, [currentFormData, lastSavedData, isDirty]);
 
-  const onSubmit = (data: FormValues) => {
+  const onSubmit = useCallback((data: FormValues) => {
     setIsSaving(true);
     const formData = new FormData();
     formData.append("intent", "update");
@@ -190,7 +192,7 @@ export default function EditStylePage() {
     formData.append("isActive", data.isActive ? "true" : "false");
 
     submit(formData, { method: 'post' });
-  };
+  }, [submit, setIsSaving]);
 
   const handleSave = useCallback(() => {
     handleSubmit(onSubmit)();
@@ -250,10 +252,10 @@ export default function EditStylePage() {
       shopify.toast.show('Style updated successfully!', {
         duration: 3000,
       });
-      
+
       // Update last saved data to current form data
       setLastSavedData(currentFormData);
-      
+
       // Clear saving state
       setIsSaving(false);
     }
@@ -269,21 +271,21 @@ export default function EditStylePage() {
   const handleTestGeneration = useCallback(async () => {
     setIsTestingGeneration(true);
     setTestResult(null);
-    
+
     try {
       const formData = new FormData();
       formData.append("intent", "test-generation");
       formData.append("promptTemplate", currentFormData.promptTemplate);
       formData.append("styleName", currentFormData.name);
       formData.append("testImageType", selectedTestImage);
-      
+
       const response = await fetch(`/app/styles/${aiStyle.uuid}/test-generation`, {
         method: 'POST',
         body: formData,
       });
-      
+
       const result = await response.json();
-      
+
       if (result.success) {
         setTestResult({ success: true, imageUrl: result.imageUrl });
         if (shopify) {
@@ -304,10 +306,15 @@ export default function EditStylePage() {
     } finally {
       setIsTestingGeneration(false);
     }
-  }, [currentFormData, aiStyle.uuid, shopify]);
+  }, [currentFormData, aiStyle.uuid, shopify, selectedTestImage]);
 
   return (
-    <>
+    <Page title={`${aiStyle.name}`}
+          backAction={{
+            content: 'Styles',
+            onAction: () => navigate('/app/styles'),
+          }}
+    >
       <TitleBar title={`${aiStyle.name}`}>
         <BreadcrumbLink to="/app/styles">
           Styles
@@ -369,7 +376,7 @@ export default function EditStylePage() {
                     />
 
                     <BlockStack gap="200">
-                    
+
                   </BlockStack>
                   </FormLayout>
                 </BlockStack>
@@ -444,7 +451,7 @@ export default function EditStylePage() {
                 <Text as="h3" variant="headingMd">
                   Test AI Generation
                 </Text>
-                
+
                 <Text variant="bodyMd" as="p" tone="subdued">
                   Test your prompt template with a sample image to see how it performs. We're using FLUX Kontext for high-quality image-to-image transformations.
                 </Text>
@@ -455,7 +462,7 @@ export default function EditStylePage() {
                       <Text as="h4" variant="headingSm">
                         Select Test Image
                       </Text>
-                      
+
                       <BlockStack gap="300">
                         <InlineStack gap="200" align="start">
                           <RadioButton
@@ -532,9 +539,9 @@ export default function EditStylePage() {
                                     <img
                                       src={testResult.imageUrl}
                                       alt="Generated test result"
-                                      style={{ 
-                                        width: '100%', 
-                                        height: 'auto', 
+                                      style={{
+                                        width: '100%',
+                                        height: 'auto',
                                         borderRadius: '8px',
                                         border: '1px solid #e1e3e5'
                                       }}
@@ -543,7 +550,7 @@ export default function EditStylePage() {
                                   <Text variant="bodySm" as="p" tone="subdued">
                                     Generated using current prompt template with {selectedTestImage} image
                                   </Text>
-                                  
+
                                   <InlineStack gap="200">
                                     <Button
                                       variant="secondary"
@@ -627,6 +634,6 @@ export default function EditStylePage() {
           </Text>
         </Modal.Section>
       </Modal>
-    </>
+    </Page>
   );
-} 
+}

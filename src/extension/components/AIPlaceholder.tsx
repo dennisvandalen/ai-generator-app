@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { ProductDataAPI, ProductData } from '../../shared/api/productData';
+import React from 'react';
 
 interface AIPlaceholderProps {
   isThemeEditor: boolean;
@@ -9,36 +8,7 @@ interface AIPlaceholderProps {
 
 export const AIPlaceholder: React.FC<AIPlaceholderProps> = ({
   isThemeEditor,
-  productId: propProductId,
-  shop: propShop,
 }) => {
-  // Only render in theme editor
-  if (!isThemeEditor) return null;
-
-  const [productData, setProductData] = useState<ProductData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Determine productId and shop
-  const productId = propProductId || (window as any).__aiConverterV1?.productId;
-  const shop = propShop || (window as any).__aiConverterV1?.shopDomain;
-
-  // Fetch product data from app proxy
-  useEffect(() => {
-    if (!productId || !shop) return;
-    setLoading(true);
-    setError(null);
-    const api = new ProductDataAPI(shop);
-    api.getProductData(productId)
-      .then((data) => {
-        setProductData(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to load product data');
-        setLoading(false);
-      });
-  }, [productId, shop]);
 
   const baseStyle = {
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -70,6 +40,9 @@ export const AIPlaceholder: React.FC<AIPlaceholderProps> = ({
     position: 'relative' as const,
     zIndex: 1,
   };
+
+  // Only render in theme editor
+  if (!isThemeEditor) return null;
 
   return (
     <div style={baseStyle}>
@@ -107,29 +80,19 @@ export const AIPlaceholder: React.FC<AIPlaceholderProps> = ({
         }}>
           🚀 Interactive on Live Store
         </div>
-        {loading && <div style={{ color: '#fff', marginBottom: 8 }}>Loading product data...</div>}
-        {error && <div style={{ color: '#ffbaba', marginBottom: 8 }}>Error: {error}</div>}
-        {productData && productData.enabled && (
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Available Styles:</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-              {productData.styles?.map(style => (
-                <div key={style.id} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '4px 10px', fontSize: 12, marginBottom: 2 }}>
-                  {style.name}
-                </div>
-              ))}
-            </div>
-            <div style={{ fontWeight: 600, fontSize: 13, margin: '8px 0 4px' }}>Available Sizes:</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-              {productData.sizes?.map(size => (
-                <div key={size.id} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '4px 10px', fontSize: 12, marginBottom: 2 }}>
-                  {size.name} ({size.widthPx}×{size.heightPx}px)
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+
+        {/* Simple placeholder message */}
+        <div style={{
+          marginTop: '12px',
+          background: 'rgba(255,255,255,0.15)',
+          borderRadius: '8px',
+          padding: '8px 16px',
+          fontSize: '14px',
+          display: 'inline-block'
+        }}>
+          AI Generator is ready to use
+        </div>
       </div>
     </div>
   );
-}; 
+};

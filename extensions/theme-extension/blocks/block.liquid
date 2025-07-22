@@ -1,10 +1,10 @@
 {%- comment -%}
   AI Converter App Block
   React SDK with App Proxy integration
-  
+
   Metafield Constants (keep in sync with app/constants.ts)
   NAMESPACE: "__aiConverterV1"
-  KEYS: 
+  KEYS:
     - AI_ENABLED: "ai_enabled"
     - LAST_UPDATED: "last_updated"
     - SELECTED_STYLES: "selected_styles"
@@ -34,21 +34,21 @@
         // Product-level settings
         aiEnabled: {{ product.metafields[ai_namespace][ai_enabled_key].value | json }},
         lastUpdated: {{ product.metafields[ai_namespace][last_updated_key].value | json }},
-        
+
         // Shop-level settings (from shop metafields)
         enableForAllPages: {{ shop.metafields[ai_namespace][enable_for_all_pages_key].value | json }},
         enableOnCart: {{ shop.metafields[ai_namespace][enable_on_cart_key].value | json }},
         enableOnCollection: {{ shop.metafields[ai_namespace][enable_on_collection_key].value | json }},
-        
+
         // Current context
         productId: {{ product.id | json }},
         productTitle: {{ product.title | json }},
         shopDomain: {{ shop.permanent_domain | json }}
     };
-    
+
     // Store globally for SDK initialization
     window.__aiConverterV1 = aiConverterData;
-    
+
     // Debug: Log data available to SDK
     console.log('🎨 AI Converter data provided to SDK:', aiConverterData);
 })();

@@ -10,34 +10,32 @@ import {
   BlockStack,
   Link,
   InlineStack,
-  DataTable,
-  Badge,
   ProgressBar,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
-import { APP_NAME } from "../constants";
-import { ProductsList } from "../components/ProductsList";
+import { authenticate } from "~/shopify.server";
+import { APP_NAME } from "~/constants";
 import drizzleDb from "../db.server";
-import { generationsTable, type Generation } from "../db/schema";
+import { generationsTable } from "~/db/schema";
 import { eq, desc, and, gte } from "drizzle-orm";
+import {Onboarding} from "~/components/Onboarding";
 
 const DEBUG_REQUESTS = process.env.DEBUG_REQUESTS === 'true' || process.env.NODE_ENV === 'development';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
-  
+
   if (DEBUG_REQUESTS) {
     console.log(`[APP_INDEX] Loading dashboard: ${url.pathname} | URL: ${request.url}`);
-    
+
     // Log request details before authentication
     const shopParam = url.searchParams.get('shop');
     console.log(`[APP_INDEX] Shop from URL params: ${shopParam}`);
     console.log(`[APP_INDEX] Headers:`, Object.fromEntries(request.headers.entries()));
   }
-  
+
   const { admin, session } = await authenticate.admin(request);
-  
+
   if (DEBUG_REQUESTS) {
     // Log session details after authentication
     console.log(`[APP_INDEX] Session shop: ${session?.shop || 'null'}`);
@@ -52,7 +50,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Get start of current month for filtering
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  
+
   // Fetch recent generations for display (limited)
   const generations = await drizzleDb
     .select()
@@ -76,7 +74,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const totalGenerations = monthlyGenerations.length;
   const successfulGenerations = monthlyGenerations.filter(g => g.status === 'completed').length;
   const processingGenerations = monthlyGenerations.filter(g => g.status === 'processing' || g.status === 'pending').length;
-  
+
   const analyticsData = {
     totalGenerations,
     successfulGenerations,
@@ -118,7 +116,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const responseJson = await response.json();
   const products = responseJson.data?.products?.edges || [];
 
-  return { 
+  return {
     products,
     shop: session.shop,
     generations,
@@ -198,7 +196,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Index() {
-  const { products, shop, generations, analyticsData } = useLoaderData<typeof loader>();
+  const { analyticsData } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
 
   const shopify = useAppBridge();
@@ -214,53 +212,24 @@ export default function Index() {
     }
   }, [productId, shopify]);
 
-
-
-  // Helper function to render status badges
-  const renderStatusBadge = (status: string) => {
-    const statusMap = {
-      completed: "success",
-      processing: "info", 
-      failed: "critical",
-      fulfilled: "success",
-      pending: "warning",
-      shipped: "info",
-    } as const;
-    
-    return <Badge tone={statusMap[status as keyof typeof statusMap] || "info"}>{status}</Badge>;
-  };
-
-  // Prepare table data for generations
-  const generationsTableRows = generations.map((gen: Generation) => [
-    gen.id.substring(0, 12) + "...", // Truncate long ID
-    gen.customerId?.replace("gid://shopify/Customer/", "Customer ") || "Anonymous",
-    gen.generationType.charAt(0).toUpperCase() + gen.generationType.slice(1),
-    gen.aiPromptUsed.substring(0, 50) + (gen.aiPromptUsed.length > 50 ? "..." : ""),
-    renderStatusBadge(gen.status || "pending"),
-    new Date(gen.createdAt).toLocaleDateString(),
-    gen.processingTimeMs ? `${(gen.processingTimeMs / 1000).toFixed(1)}s` : "-",
-  ]);
-
-
-
   return (
-    <Page>
+    <Page title={APP_NAME}>
       <TitleBar title={APP_NAME}>
-        <button variant="primary" onClick={() => window.location.href = '/app/products'}>
-          Enable Products
-        </button>
+        {/*<button variant="primary" onClick={() => window.location.href = '/app/products'}>*/}
+        {/*  Enable Products*/}
+        {/*</button>*/}
       </TitleBar>
       <BlockStack gap="500">
         <Layout>
           <Layout.Section>
             <BlockStack gap="500">
+
+              <Onboarding />
+
               <Card>
                 <BlockStack gap="200">
                   <Text as="h2" variant="headingLg">
                     Welcome to {APP_NAME}
-                  </Text>
-                  <Text variant="bodyMd" as="p" tone="subdued">
-                    Logged in as: <Text as="span" fontWeight="semibold">{shop}</Text>
                   </Text>
                   <Text variant="bodyMd" as="p">
                     Create beautiful, custom posters of your pets using the power of AI. Enable products for pet customization, manage AI styles, and track generation orders.
@@ -310,8 +279,8 @@ export default function Index() {
                           <Text as="p" variant="headingXl">
                             {analyticsData.totalGenerations > 0 ? analyticsData.conversionRate.toFixed(1) : '0'}%
                           </Text>
-                          <ProgressBar 
-                            progress={analyticsData.totalGenerations > 0 ? analyticsData.conversionRate : 0} 
+                          <ProgressBar
+                            progress={analyticsData.totalGenerations > 0 ? analyticsData.conversionRate : 0}
                             tone="success"
                           />
                         </BlockStack>
@@ -335,114 +304,29 @@ export default function Index() {
                   </Layout>
                 </BlockStack>
               </Card>
-
-              {/* Recent Generations Table */}
-              <Card>
-                <BlockStack gap="300">
-                  <Text as="h2" variant="headingLg">
-                    Recent Generations
-                  </Text>
-                  <DataTable
-                    columnContentTypes={[
-                      'text',
-                      'text', 
-                      'text',
-                      'text',
-                      'text',
-                      'text',
-                      'text',
-                    ]}
-                    headings={[
-                      'Generation ID',
-                      'Customer',
-                      'Type',
-                      'AI Prompt',
-                      'Status',
-                      'Created',
-                      'Processing Time',
-                    ]}
-                    rows={generationsTableRows}
-                  />
-                </BlockStack>
-              </Card>
-
-              <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingLg">
-                    Your Products
-                  </Text>
-                  <ProductsList products={products} shop={shop} />
-                </BlockStack>
-              </Card>
             </BlockStack>
           </Layout.Section>
           <Layout.Section variant="oneThird">
             <BlockStack gap="500">
               <Card>
                 <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    App template specs
+                  <Text as="h2" variant="headingLg">
+                    Quick Actions
                   </Text>
-                  <BlockStack gap="200">
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Framework
-                      </Text>
-                      <Link
-                        url="https://remix.run"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Remix
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Database
-                      </Text>
-                      <Link
-                        url="https://drizzle.team/"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Drizzle ORM
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Interface
-                      </Text>
-                      <span>
-                        <Link
-                          url="https://polaris.shopify.com"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          Polaris
-                        </Link>
-                        {", "}
-                        <Link
-                          url="https://shopify.dev/docs/apps/tools/app-bridge"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          App Bridge
-                        </Link>
-                      </span>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        API
-                      </Text>
-                      <Link
-                        url="https://shopify.dev/docs/api/admin-graphql"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphQL API
-                      </Link>
-                    </InlineStack>
-                  </BlockStack>
+                  <Text variant="bodyMd" as="p" tone="subdued">
+                    Use the buttons below to quickly create products or manage your AI styles.
+                  </Text>
+                  <InlineStack gap="200">
+                    <Button
+                      onClick={() => fetcher.submit({}, { method: 'post' })}
+                      loading={fetcher.state === 'submitting'}
+                    >
+                      Create New Product
+                    </Button>
+                    <Link url="/app/styles">
+                      Manage AI Styles
+                    </Link>
+                  </InlineStack>
                 </BlockStack>
               </Card>
             </BlockStack>

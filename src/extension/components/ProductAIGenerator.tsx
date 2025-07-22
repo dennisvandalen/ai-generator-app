@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ProductDataAPI, ProductData, ProductStyle } from '../../shared/api/productData';
+import type { ProductData, ProductStyle } from '../../shared/api/productData';
+import { ProductDataAPI } from '../../shared/api/productData';
 import Cropper from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import ReactDOM from 'react-dom';
@@ -24,6 +25,21 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
   onError,
   onUpdateGenerationState,
 }) => {
+  // Performance monitoring - track renders
+  const renderCountRef = useRef(0);
+  const lastRenderTimeRef = useRef(Date.now());
+
+  // Increment render count on each render
+  renderCountRef.current += 1;
+
+  // Calculate time since last render
+  const now = Date.now();
+  const timeSinceLastRender = now - lastRenderTimeRef.current;
+  lastRenderTimeRef.current = now;
+
+  // Log render information
+  console.log(`🔄 ProductAIGenerator render #${renderCountRef.current} (${timeSinceLastRender}ms since last render)`);
+
   const [productData, setProductData] = useState<ProductData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +66,8 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
 
   // Uploaded image URL state
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
-  const api = new AIGeneratorAPI();
+  // Use useRef to maintain a stable reference to the API instance
+  const apiRef = useRef<AIGeneratorAPI>(new AIGeneratorAPI());
 
   // Generation loading and result state
   const [generationLoading, setGenerationLoading] = useState(false);
@@ -80,6 +97,182 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
 
   const generationsContainerRef = useRef<HTMLDivElement>(null);
 
+  // Get current variant for display - moved to top level to ensure consistent hook order
+  // Using refs instead of state to prevent re-renders when variant changes
+  const currentVariantIdRef = useRef<string | null>(null);
+  const variantAspectRatioRef = useRef<number | null>(null);
+
+  // Keep state for initial render and for components that need to react to changes
+  // but don't update these directly when variant changes
+  const [currentVariantId, setCurrentVariantId] = useState<string | null>(null);
+  const [variantAspectRatio, setVariantAspectRatio] = useState<number | null>(null);
+
+  // Function to calculate aspect ratio based on variant ID - memoized to prevent recalculation
+  const calculateAspectRatio = useCallback((variantId: string | null) => {
+    if (!variantId || !productData?.variants || productData.variants.length === 0) {
+      return null; // Default to null if no variant selected or no variant data
+    }
+
+    // Find the variant dimensions
+    const variantData = productData.variants.find(v => v.variantId === variantId);
+    if (!variantData || !variantData.dimensions) {
+      console.log('No dimensions found for variant:', variantId);
+      return null;
+    }
+
+    const { width, height } = variantData.dimensions;
+    if (!width || !height) {
+      console.log('Invalid dimensions for variant:', variantId, width, height);
+      return null;
+    }
+
+    // Calculate aspect ratio (width / height)
+    const ratio = width / height;
+    console.log('Calculated aspect ratio for variant:', variantId, ratio);
+    return ratio;
+  }, [productData]);
+
+  // Function to update aspect ratio without triggering re-renders
+  const updateAspectRatio = useCallback((variantId: string | null) => {
+    const ratio = calculateAspectRatio(variantId);
+
+    // Always update the ref
+    currentVariantIdRef.current = variantId;
+    variantAspectRatioRef.current = ratio;
+
+    // Only update state if this is the initial setup or if UI needs to be updated
+    // This prevents unnecessary re-renders when variant changes
+    if (!variantAspectRatio || ratio !== variantAspectRatio) {
+      console.log('🔄 Updating aspect ratio state:', variantId, 'New ratio:', ratio);
+      setVariantAspectRatio(ratio);
+    }
+
+    return ratio;
+  }, [calculateAspectRatio, variantAspectRatio]);
+
+  // Initial aspect ratio calculation - runs when product data or currentVariantId changes
+  useEffect(() => {
+    if (productData?.variants && productData.variants.length > 0) {
+      const variantId = currentVariantIdRef.current || currentVariantId;
+      updateAspectRatio(variantId);
+    }
+  }, [productData, updateAspectRatio, currentVariantId]);
+
+  // Define loadProductData with useCallback - removed currentVariantId dependency
+  const loadProductData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const api = new ProductDataAPI(shop || (window as any).Shopify?.shop);
+      const data = await api.getProductData(productId);
+
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setProductData(data);
+
+        // Auto-select first style if available
+        if (data.styles && data.styles.length > 0) {
+          setSelectedStyle(data.styles[0]);
+        }
+
+        // Note: We don't calculate aspect ratio here anymore
+        // The useEffect that depends on productData will handle this
+        // This prevents re-fetching data when only the variant changes
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load product data';
+      setError(errorMessage);
+      onError?.(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [productId, shop, onError]);
+
+  // Helper function to detect the currently selected variant
+  // Optimized to avoid unnecessary re-renders
+  const getSelectedVariantId = (): string | null => {
+    try {
+      // Look for the product form in the current page
+      const productForm = document.querySelector('form[action*="/cart/add"]') as HTMLFormElement;
+      if (!productForm) {
+        console.warn('Product form not found');
+        return null;
+      }
+
+      // For performance logging
+      const startTime = performance.now();
+
+      // Method 1: Look for the variant ID input field
+      const variantInput = productForm.querySelector('input[name="id"]') as HTMLInputElement;
+      if (variantInput) {
+        const variantId = variantInput.value;
+        console.log('✅ Found variant ID via input[name="id"]:', variantId);
+        return variantId;
+      }
+
+      // Method 2: Look for any input with class containing "product-variant-id"
+      const variantInputByClass = productForm.querySelector('input[class*="product-variant-id"]') as HTMLInputElement;
+      if (variantInputByClass) {
+        const variantId = variantInputByClass.value;
+        console.log('✅ Found variant ID via class selector:', variantId);
+        return variantId;
+      }
+
+      // Method 3: Look for checked radio buttons or selected options
+      const variantSelectors = productForm.querySelectorAll('input[type="radio"], input[type="checkbox"], select');
+      for (const selector of variantSelectors) {
+        if (selector instanceof HTMLInputElement && selector.checked) {
+          const variantId = selector.value;
+          console.log('✅ Found variant ID via checked input:', variantId);
+          return variantId;
+        } else if (selector instanceof HTMLSelectElement) {
+          const variantId = selector.value;
+          console.log('✅ Found variant ID via select:', variantId);
+          return variantId;
+        }
+      }
+
+      // Method 4: Look for data attributes on buttons or elements
+      const variantElements = productForm.querySelectorAll('[data-variant-id], [data-variant], [data-product-variant]');
+      for (const element of variantElements) {
+        const variantId = element.getAttribute('data-variant-id') ||
+                         element.getAttribute('data-variant') ||
+                         element.getAttribute('data-product-variant');
+        if (variantId && (element.classList.contains('selected') || element.classList.contains('active'))) {
+          console.log('✅ Found variant ID via data attribute:', variantId);
+          return variantId;
+        }
+      }
+
+      // Method 5: Look for any element with variant ID in its text content or attributes
+      const allElements = productForm.querySelectorAll('*');
+      for (const element of allElements) {
+        const attributes = element.attributes;
+        for (let i = 0; i < attributes.length; i++) {
+          const attr = attributes[i];
+          if (attr.name.includes('variant') && attr.value && /^\d+$/.test(attr.value)) {
+            const variantId = attr.value;
+            console.log('✅ Found variant ID via attribute search:', variantId);
+            return variantId;
+          }
+        }
+      }
+
+      console.warn('❌ No variant ID found in product form');
+
+      // Log performance
+      const endTime = performance.now();
+      console.log(`⏱️ Variant detection took ${(endTime - startTime).toFixed(2)}ms`);
+
+      return null;
+    } catch (error) {
+      console.error('Error detecting selected variant:', error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (generationLoading) {
@@ -96,49 +289,183 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
 
   useEffect(() => {
     if (generationsContainerRef.current) {
-      generationsContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      generationsContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [generationResult]);
 
   useEffect(() => {
     loadProductData();
-  }, [productId]);
+  }, [productId, loadProductData]);
 
-  const loadProductData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const api = new ProductDataAPI(shop || (window as any).Shopify?.shop);
-      const data = await api.getProductData(productId);
-      
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setProductData(data);
-        
-        // Auto-select first style if available
-        if (data.styles && data.styles.length > 0) {
-          setSelectedStyle(data.styles[0]);
+  // Listen for variant changes and update generation state
+  useEffect(() => {
+    // Performance-optimized variant change handler
+    const handleVariantChange = () => {
+      // Track when this handler is called for performance monitoring
+      const handlerStartTime = performance.now();
+      console.log('🔄 Variant change detected!');
+
+      // Get the new variant ID
+      const newVariantId = getSelectedVariantId();
+
+      // Only proceed if the variant has actually changed
+      if (newVariantId !== currentVariantIdRef.current) {
+        console.log('🔄 Variant ID updated in event handler:', currentVariantIdRef.current, '→', newVariantId);
+
+        // Update the ref immediately (doesn't cause re-render)
+        currentVariantIdRef.current = newVariantId;
+
+        // Store variant ID globally for debug panel
+        (window as any).__aiCurrentVariantId = newVariantId;
+
+        // Dispatch custom event for debug panel
+        window.dispatchEvent(new CustomEvent('aiVariantIdChanged', {
+          detail: { variantId: newVariantId }
+        }));
+
+        // Update the aspect ratio using our optimized function (updates refs first)
+        const newRatio = updateAspectRatio(newVariantId);
+
+        // Log the optimization
+        console.log(`⚡ Optimized variant change: Updated refs without re-render. Aspect ratio: ${newRatio || 'default'}`);
+
+        // Only update state if necessary for UI updates
+        // This is done with a slight delay to batch potential state updates
+        setTimeout(() => {
+          console.log(`⏱️ Delayed state update for variant ${newVariantId}`);
+          setCurrentVariantId(newVariantId);
+        }, 0);
+
+        // Log total handler execution time
+        const handlerEndTime = performance.now();
+        console.log(`⏱️ Variant change handler took ${(handlerEndTime - handlerStartTime).toFixed(2)}ms`);
+
+        // If we have a generation selected, we need to reset it when variant changes
+        // since the variant affects the generation context
+        if (generationState.generationSelected) {
+          console.log('Variant changed, resetting generation state');
+          onUpdateGenerationState(false, null, null);
+          setSelectedGeneratedImageUrl(null);
+          setGenerationState(prev => ({ ...prev, generationSelected: false, generationId: null }));
         }
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load product data';
-      setError(errorMessage);
-      onError?.(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  // Helper to generate a UUID for generationId
-  const generateUUID = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-      const r = (Math.random() * 16) | 0,
-        v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-  };
+    // More comprehensive variant change detection
+    const setupVariantListeners = () => {
+      const productForm = document.querySelector('form[action*="/cart/add"]');
+      if (!productForm) {
+        console.log('⚠️ Product form not found for variant listeners');
+        return;
+      }
+
+      console.log('🔍 Setting up variant change listeners...');
+
+      // Method 1: Direct input changes
+      const variantInputs = productForm.querySelectorAll('input[name="id"], input[type="radio"], input[type="checkbox"], select');
+      console.log('Found variant inputs:', variantInputs.length);
+      variantInputs.forEach(input => {
+        input.addEventListener('change', handleVariantChange);
+        input.addEventListener('click', handleVariantChange);
+      });
+
+      // Method 2: Listen for any input changes in the form
+      productForm.addEventListener('change', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'SELECT') {
+          console.log('Form input changed:', target);
+          handleVariantChange();
+        }
+      });
+
+      // Method 3: Listen for clicks on variant buttons/options
+      const variantButtons = productForm.querySelectorAll('button, .variant-option, [data-variant-id]');
+      console.log('Found variant buttons:', variantButtons.length);
+      variantButtons.forEach(button => {
+        button.addEventListener('click', handleVariantChange);
+      });
+
+      // Method 4: MutationObserver to watch for dynamic changes
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' &&
+              (mutation.attributeName === 'value' || mutation.attributeName === 'checked')) {
+            console.log('Mutation detected:', mutation);
+            handleVariantChange();
+          }
+        });
+      });
+
+      // Observe the entire form for attribute changes
+      observer.observe(productForm, {
+        attributes: true,
+        attributeFilter: ['value', 'checked'],
+        subtree: true
+      });
+
+      // Method 5: Listen for custom events that themes might dispatch
+      document.addEventListener('variant:change', handleVariantChange);
+      document.addEventListener('variantChange', handleVariantChange);
+      document.addEventListener('product:variant:change', handleVariantChange);
+
+      // Return cleanup function
+      return () => {
+        variantInputs.forEach(input => {
+          input.removeEventListener('change', handleVariantChange);
+          input.removeEventListener('click', handleVariantChange);
+        });
+        variantButtons.forEach(button => {
+          button.removeEventListener('click', handleVariantChange);
+        });
+        document.removeEventListener('variant:change', handleVariantChange);
+        document.removeEventListener('variantChange', handleVariantChange);
+        document.removeEventListener('product:variant:change', handleVariantChange);
+        observer.disconnect();
+      };
+    };
+
+    // Setup listeners with a small delay to ensure DOM is ready
+    const cleanup = setupVariantListeners();
+
+    // Also setup listeners again after a delay to catch any dynamic content
+    const timeoutId = setTimeout(setupVariantListeners, 1000);
+
+    return () => {
+      cleanup?.();
+      clearTimeout(timeoutId);
+    };
+  }, [generationState.generationSelected, onUpdateGenerationState, updateAspectRatio]);
+
+  // Update variant ID on mount and provide manual trigger
+  useEffect(() => {
+    const updateVariantId = () => {
+      const newVariantId = getSelectedVariantId();
+      setCurrentVariantId(prevVariantId => {
+        if (newVariantId !== prevVariantId) {
+          console.log('🔄 Variant ID updated:', prevVariantId, '→', newVariantId);
+          // Store variant ID globally for debug panel
+          (window as any).__aiCurrentVariantId = newVariantId;
+          // Dispatch custom event for debug panel
+          window.dispatchEvent(new CustomEvent('aiVariantIdChanged', {
+            detail: { variantId: newVariantId }
+          }));
+          return newVariantId;
+        }
+        return prevVariantId;
+      });
+    };
+
+    // Initial check
+    updateVariantId();
+
+    // Add manual trigger to window for debugging
+    (window as any).__forceVariantCheck = updateVariantId;
+
+    return () => {
+      delete (window as any).__forceVariantCheck;
+    };
+  }, []); // No dependencies - runs only once on mount
+
 
   const handleGenerationToggle = async () => {
     if (generationState.generationSelected) {
@@ -160,10 +487,16 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
       setGenerationLoading(true);
       setError(null);
       try {
-        const result = await api.createAIGeneration({
+        // Use the ref value first if available, otherwise get the current variant ID
+        // This prevents unnecessary DOM operations if we already know the variant ID
+        const selectedVariantId = currentVariantIdRef.current || getSelectedVariantId();
+        console.log('Selected variant ID for generation:', selectedVariantId);
+
+        const result = await apiRef.current.createAIGeneration({
           styleId: style.id,
           imageUrl,
           productId: productId, // Pass productId
+          variantId: selectedVariantId || undefined, // Pass the selected variant ID (convert null to undefined)
         });
         setGenerationResult(prevResults => [...(prevResults || []), result]);
         let initialSelectedImageUrl = null;
@@ -177,10 +510,9 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         if (selectedStyle && initialSelectedImageUrl) {
           onGenerationStart?.(selectedStyle, initialSelectedImageUrl);
         }
-        setSelectedStyle(null); // Deselect the style after generation
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to generate AI art');
-        onUpdateGenerationState(false, null); // Disable ATC on error
+        onUpdateGenerationState(false, null, null); // Fix: Add missing third parameter
       } finally {
         setGenerationLoading(false);
       }
@@ -211,55 +543,18 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
     });
   }
 
-  const showCroppedImage = useCallback(async () => {
-    if (!imageSrc || !croppedAreaPixels) return;
-    setIsUploading(true); // Set loading to true
-    try {
-      const cropped = await getCroppedImg(imageSrc, croppedAreaPixels);
-      setCroppedImage(cropped);
-      // Immediately upload after cropping
-      if (cropped) {
-        try {
-          const base64 = await blobUrlToBase64(cropped);
-          const filename = `ai-art-${productId}-${Date.now()}.jpg`;
-          const url = await api.uploadImage(base64, filename);
-          setUploadedImageUrl(url);
-          // Store on window for now
-          if (typeof window !== 'undefined') {
-            (window as any).__aiUploadedImageUrl = url;
-          }
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Upload failed');
-        } finally {
-          setIsUploading(false); // Set loading to false after upload attempt
-        }
-      } else {
-        setIsUploading(false); // Set loading to false if no cropped image
-      }
-    } catch (e) {
-      setError('Failed to crop image');
-      setIsUploading(false); // Set loading to false on crop error
-    }
-  }, [imageSrc, croppedAreaPixels, api, productId]);
-
-  const onFileChange = async (file: File) => {
-    if (file) {
-      const reader = new FileReader();
-      reader.addEventListener('load', () => {
-        setImageSrc(reader.result as string);
-        setCroppedImage(null);
-        setShowCropperModal(true);
-      });
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Utility: crop image to max 1024px on the longest side, preserving crop aspect ratio
-  async function getCroppedImg(imageSrc: string, crop: any): Promise<string> {
+  // Utility: crop image to max 2048px on the longest side, preserving crop aspect ratio
+  const getCroppedImg = useCallback(async (imageSrc: string, crop: any): Promise<string> => {
     const image = await createImage(imageSrc);
     // Calculate aspect ratio from crop area
     const aspect = crop.width / crop.height;
-    const maxSide = 1024;
+
+    // Log the aspect ratio being used for cropping
+    console.log('🖼️ Cropping image with aspect ratio:', aspect);
+    console.log('🖼️ Current variant aspect ratio:', variantAspectRatio);
+    console.log('🖼️ Crop dimensions:', crop.width, 'x', crop.height);
+
+    const maxSide = 2048;
     let outputWidth: number, outputHeight: number;
     if (aspect >= 1) {
       // Landscape or square
@@ -270,6 +565,9 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
       outputHeight = maxSide;
       outputWidth = Math.round(maxSide * aspect);
     }
+
+    console.log('🖼️ Output dimensions:', outputWidth, 'x', outputHeight);
+
     const canvas = document.createElement('canvas');
     canvas.width = outputWidth;
     canvas.height = outputHeight;
@@ -292,7 +590,51 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         resolve(URL.createObjectURL(blob));
       }, 'image/jpeg');
     });
-  }
+  }, [variantAspectRatio]);
+
+  const showCroppedImage = useCallback(async () => {
+    if (!imageSrc || !croppedAreaPixels) return;
+    setIsUploading(true); // Set loading to true
+    try {
+      const cropped = await getCroppedImg(imageSrc, croppedAreaPixels);
+      setCroppedImage(cropped);
+      // Immediately upload after cropping
+      if (cropped) {
+        try {
+          const base64 = await blobUrlToBase64(cropped);
+          const filename = `ai-art-${productId}-${Date.now()}.jpg`;
+          const url = await apiRef.current.uploadImage(base64, filename);
+          setUploadedImageUrl(url);
+          // Store on window for now
+          if (typeof window !== 'undefined') {
+            (window as any).__aiUploadedImageUrl = url;
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Upload failed');
+        } finally {
+          setIsUploading(false); // Set loading to false after upload attempt
+        }
+      } else {
+        setIsUploading(false); // Set loading to false if no cropped image
+      }
+    } catch (e) {
+      setError('Failed to crop image');
+      setIsUploading(false); // Set loading to false on crop error
+    }
+  }, [imageSrc, croppedAreaPixels, productId, getCroppedImg]);
+
+  const onFileChange = async (file: File) => {
+    if (file) {
+      const reader = new FileReader();
+      reader.addEventListener('load', () => {
+        setImageSrc(reader.result as string);
+        setCroppedImage(null);
+        setShowCropperModal(true);
+      });
+      reader.readAsDataURL(file);
+    }
+  };
+
 
   function createImage(url: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
@@ -371,11 +713,12 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         `}</style>
         <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 12 }}>Crop your image</div>
         <div style={{ position: 'relative', width: 340, height: 340, background: '#eee', margin: '0 auto' }}>
+          {/* Use variant aspect ratio if available, otherwise fallback to default */}
           <Cropper
             image={imageSrc}
             crop={crop}
             zoom={zoom}
-            aspect={210/297}
+            aspect={variantAspectRatioRef.current || variantAspectRatio || 210/297}
             onCropChange={setCrop}
             onCropComplete={onCropComplete}
             onZoomChange={setZoom}
@@ -409,26 +752,31 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
     <div ref={componentRef}>
       <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, letterSpacing: 0.2 }}>Customize</div>
       <div className="ai-generator-compact-box">
-        <legend className="form__label ai-generator-style-label">Select style:</legend>
-        <div className="ai-generator-styles">
-          {styles.map((style) => (
-            <div
-              key={style.id}
-              className={`ai-generator-style${selectedStyle?.id === style.id ? ' selected' : ''}`}
-              onClick={() => setSelectedStyle(style)}
-            >
-              {style.exampleImageUrl && (
-                <img
-                  src={style.exampleImageUrl}
-                  alt={style.name}
-                  className="ai-generator-style-image"
-                />
-              )}
+        {/* Only show style selection if there are multiple styles */}
+        {styles.length > 1 && (
+          <>
+            <legend className="form__label ai-generator-style-label">Select style:</legend>
+            <div className="ai-generator-styles">
+              {styles.map((style) => (
+                <div
+                  key={style.id}
+                  className={`ai-generator-style${selectedStyle?.id === style.id ? ' selected' : ''}`}
+                  onClick={() => setSelectedStyle(style)}
+                >
+                  {style.exampleImageUrl && (
+                    <img
+                      src={style.exampleImageUrl}
+                      alt={style.name}
+                      className="ai-generator-style-image"
+                    />
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
         {/* Image Upload + Crop Tool */}
-        <div style={{ margin: '24px 0' }}>
+        <div style={{ margin: styles.length > 1 ? '24px 0' : '0' }}>
           <legend className="form__label ai-generator-style-label">Upload your image:</legend>
           {!imageSrc && (
             <div
@@ -469,7 +817,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
           )}
           {croppedImage && (
             <div style={{ textAlign: 'center' }}>
-              <img src={croppedImage} alt="Cropped preview" style={{ width: 180, height: 180, objectFit: 'cover', borderRadius: 8, border: '1px solid #eee' }} />
+              <img src={croppedImage} alt="Cropped preview" style={{ width: 180, height: 180, objectFit: 'contain', borderRadius: 8, border: '1px solid #eee' }} />
               <div style={{ marginTop: 8 }}>
                 <button type="button" onClick={() => setShowCropperModal(true)} style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer' }}>Crop Again</button>
                 <button type="button" onClick={() => { setImageSrc(null); setCroppedImage(null); }} style={{ marginLeft: 8, padding: '4px 12px', borderRadius: 4, border: '1px solid #e57373', background: '#ffeaea', color: '#c00', cursor: 'pointer' }}>Remove</button>
@@ -485,8 +833,8 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
           <button
             className="product-form__submit button button--full-width button--secondary"
             onClick={handleGenerationToggle}
-            disabled={!selectedStyle || generationLoading}
-            style={{ cursor: selectedStyle ? 'pointer' : 'not-allowed' }}
+            disabled={!selectedStyle || !currentVariantId || generationLoading}
+            style={{ cursor: (selectedStyle && currentVariantId) ? 'pointer' : 'not-allowed' }}
           >
             {generationLoading ? (
               <>
@@ -533,7 +881,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
                   )}
                 </div>
               ))}
-              
+
             </div>
           )}
           <div
@@ -550,7 +898,14 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
               marginTop: 8,
             }}
           >
-            {generationState.generationSelected ? '✅ Generation Selected' : '🚀 Select AI Style to continue'}
+            {generationState.generationSelected
+              ? '✅ Generation Selected'
+              : !currentVariantId
+                ? '⚠️ Select a variant first'
+                : styles.length === 1
+                  ? '🚀 Upload image to continue'
+                  : '🚀 Select AI Style to continue'
+            }
           </div>
         </div>
       </div>
@@ -746,6 +1101,17 @@ if (typeof document !== 'undefined') {
   const styleElement = document.createElement('style');
   styleElement.textContent = styles;
   document.head.appendChild(styleElement);
+
+  // Log that dynamic aspect ratio feature is enabled
+  console.log('✅ ProductAIGenerator: Dynamic aspect ratio based on variant dimensions is enabled');
+  console.log('   When cropping, the aspect ratio will match the selected product variant');
+
+  // Log that performance optimizations are enabled
+  console.log('🚀 ProductAIGenerator: Performance optimizations enabled');
+  console.log('   - Using refs instead of state for variant tracking to prevent re-renders');
+  console.log('   - Optimized aspect ratio calculation to minimize state updates');
+  console.log('   - Batched state updates for variant changes');
+  console.log('   - Added performance monitoring to track renders');
 }
 
-export default ProductAIGenerator; 
+export default ProductAIGenerator;

@@ -1,13 +1,13 @@
-import { type LoaderFunctionArgs, json } from "@remix-run/node";
+import { type LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   console.log("=== APP PROXY AUTHENTICATED ROUTE (Shopify Auth) ===");
-  
+
      try {
      // Use Shopify's built-in app proxy authentication
      const { session, liquid } = await authenticate.public.appProxy(request);
-     
+
      console.log("✅ Shopify authentication successful");
      console.log("Session:", session);
      console.log("Liquid context:", liquid);
@@ -16,7 +16,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
        throw new Error("No session returned from authentication");
      }
 
-     return json({
+     return Response.json({
        success: true,
        message: "✅ Authenticated with Shopify's built-in method!",
        authenticated: true,
@@ -30,11 +30,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
      });
   } catch (error) {
     console.log("❌ Shopify authentication failed:", error);
-    
-    return json({
+
+    return Response.json({
       success: false,
       error: "Unauthorized - Shopify authentication failed",
       message: error instanceof Error ? error.message : "Unknown error"
     }, { status: 401 });
   }
-} 
+}

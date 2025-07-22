@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@remix-run/react";
 import { useAppBridge } from "@shopify/app-bridge-react";
-import { To } from "react-router";
+import type { To } from "react-router";
 
 export default function BreadcrumbLink({ to, children }: { to: To, children: React.ReactNode }) {
     const shopify = useAppBridge();

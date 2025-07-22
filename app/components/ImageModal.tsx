@@ -1,6 +1,6 @@
 import { Modal, Text } from "@shopify/polaris";
 
-interface ImageModalProps {
+type Props = {
   imageUrl: string | null;
   altText: string | null;
   isOpen: boolean;
@@ -8,13 +8,13 @@ interface ImageModalProps {
   onDownload?: () => void;
 }
 
-export function ImageModal({ 
-  imageUrl, 
-  altText, 
-  isOpen, 
-  onClose, 
-  onDownload 
-}: ImageModalProps) {
+export function ImageModal({
+  imageUrl,
+  altText,
+  isOpen,
+  onClose,
+  onDownload
+}: Props) {
   const handleDownload = async () => {
     if (!imageUrl || !altText) return;
 
@@ -24,16 +24,16 @@ export function ImageModal({
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      
+
       // Generate filename from alt text and timestamp
       const filename = `${altText.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${Date.now()}.jpg`;
       link.download = filename;
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
+
       if (onDownload) {
         onDownload();
       }
@@ -83,4 +83,4 @@ export function ImageModal({
       </Modal.Section>
     </Modal>
   );
-} 
+}

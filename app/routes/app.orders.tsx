@@ -6,7 +6,6 @@ import {
   Text,
   Card,
   BlockStack,
-  InlineStack,
   EmptyState,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -14,15 +13,15 @@ import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  
-  return { 
+
+  return {
     shop: session.shop,
     orders: [], // Placeholder
   };
 };
 
 export default function OrdersPage() {
-  const { shop, orders } = useLoaderData<typeof loader>();
+  useLoaderData<typeof loader>();
 
   return (
     <Page>
@@ -57,4 +56,4 @@ export default function OrdersPage() {
       </BlockStack>
     </Page>
   );
-} 
+}

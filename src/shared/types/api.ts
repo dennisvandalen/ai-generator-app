@@ -15,6 +15,7 @@ export interface GenerationRequest {
   productId: string;
   styleId: string;
   uploadedImageUrl: string;
+  variantId?: string;
   customerId?: string;
   customerEmail?: string;
 }

@@ -1,5 +1,4 @@
-import type { AIStyle, GenerationRequest, Generation, ProductStylesResponse, GenerationResponse } from '@shared/types/api';
-import { APP_PROXY_CONFIG, POLLING_CONFIG, GENERATION_STATUS } from '@shared/constants';
+import { APP_PROXY_CONFIG } from '@shared/constants';
 
 /**
  * Simple AI Generator API Client
@@ -15,11 +14,11 @@ export class AIGeneratorAPI {
   async getProductStyles(productId: string) {
     try {
       const response = await fetch(`${this.baseURL}/products/${productId}/styles`);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch styles: ${response.status}`);
       }
-      
+
       return await response.json();
     } catch (error) {
       console.error('Error fetching product styles:', error);
@@ -31,18 +30,18 @@ export class AIGeneratorAPI {
     try {
       const response = await fetch(`${this.baseURL}/generations`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json' 
+        headers: {
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to create generation: ${response.status}`);
       }
-      
+
       const result = await response.json();
-      
+
       // Start polling for completion
       return this.pollForCompletion(result.id);
     } catch (error) {
@@ -56,13 +55,13 @@ export class AIGeneratorAPI {
       const poll = async () => {
         try {
           const response = await fetch(`${this.baseURL}/generations/${generationId}/status`);
-          
+
           if (!response.ok) {
             throw new Error(`Failed to check status: ${response.status}`);
           }
-          
+
           const data = await response.json();
-          
+
           if (data.completed) {
             resolve(data);
           } else if (data.failed) {
@@ -75,7 +74,7 @@ export class AIGeneratorAPI {
           reject(error);
         }
       };
-      
+
       poll();
     });
   }
@@ -112,10 +111,16 @@ export class AIGeneratorAPI {
 
   /**
    * Create an AI generation using the selected style and uploaded image URL
-   * @param {Object} params - { styleId, imageUrl, ... }
+   * @param {Object} params - { styleId, imageUrl, variantId?, ... }
    * @returns {Promise<any>} Generation result or polling promise
    */
-  async createAIGeneration(params: { styleId: string; imageUrl: string; [key: string]: any }): Promise<any> {
+  async createAIGeneration(params: {
+    styleId: string;
+    imageUrl: string;
+    productId: string | number;
+    variantId?: string;
+    [key: string]: any
+  }): Promise<any> {
     try {
       const response = await fetch(`${this.baseURL}/generations`, {
         method: 'POST',
@@ -137,4 +142,4 @@ export class AIGeneratorAPI {
       throw error;
     }
   }
-} 
+}
