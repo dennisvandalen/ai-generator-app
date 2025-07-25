@@ -1,9 +1,9 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "dabfce4798337ee21f0a8970fb76757f"
-name = "[DEV] AI Pet Converter"
-handle = "ai-generator-app"
-application_url = "https://sleeve-assignment-reliable-counseling.trycloudflare.com"
+name = "[DEV] Autopictura"
+handle = "autopictura-dev"
+application_url = "https://drawing-printed-xml-sg.trycloudflare.com"
 embedded = true
 
 [build]
@@ -15,23 +15,23 @@ api_version = "2025-07"
 
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
-  uri = "/webhooks/app/scopes_update"
+  uri = "https://excuse-np-wisconsin-tried.trycloudflare.com/webhooks/app/scopes_update"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
-  uri = "/webhooks/app/uninstalled"
+  uri = "https://excuse-np-wisconsin-tried.trycloudflare.com/webhooks/app/uninstalled"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,write_orders,read_themes,write_app_proxy"
+scopes = "read_themes,write_app_proxy,write_orders,write_products"
 
 [auth]
-redirect_urls = ["https://sleeve-assignment-reliable-counseling.trycloudflare.com/auth/callback", "https://sleeve-assignment-reliable-counseling.trycloudflare.com/auth/shopify/callback", "https://sleeve-assignment-reliable-counseling.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://drawing-printed-xml-sg.trycloudflare.com/auth/callback", "https://drawing-printed-xml-sg.trycloudflare.com/auth/shopify/callback", "https://drawing-printed-xml-sg.trycloudflare.com/api/auth/callback"]
+
+[app_proxy]
+url = "https://drawing-printed-xml-sg.trycloudflare.com"
+subpath = "autopictura"
+prefix = "tools"
 
 [pos]
 embedded = false
-
-[app_proxy]
-url = "https://sleeve-assignment-reliable-counseling.trycloudflare.com"
-prefix = "tools"
-subpath = "ai-studio"

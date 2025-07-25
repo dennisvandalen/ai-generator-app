@@ -1,0 +1,32 @@
+# fly.toml app configuration file generated for ai-generator-app-staging on 2025-07-22
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'autopictura-beta'
+primary_region = 'ams'
+
+[build]
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+
+[env]
+  SHOPIFY_APP_URL="https://autopictura-beta.fly.dev"
+  APP_URL="https://autopictura-beta.fly.dev"
+  HOST="0.0.0.0"
+  NODE_ENV="production"
+  APP_ENV="staging"
+
+[deploy]
+  strategy = "rolling"
+  min_machines_running = 1

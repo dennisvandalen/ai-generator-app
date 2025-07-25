@@ -17,14 +17,14 @@ export const AI_METAFIELD_KEYS = {
 // App Proxy configuration
 export const APP_PROXY_CONFIG = {
   PREFIX: 'tools',
-  SUBPATH: 'ai-studio',
-  BASE_PATH: '/tools/ai-studio/api',
+  SUBPATH: 'autopictura',
+  BASE_PATH: '/tools/autopictura/api',
 } as const;
 
 // Generation status values
 export const GENERATION_STATUS = {
   PENDING: 'pending',
-  PROCESSING: 'processing', 
+  PROCESSING: 'processing',
   COMPLETED: 'completed',
   FAILED: 'failed',
 } as const;
@@ -42,4 +42,4 @@ export const PAGE_TYPES = {
   COLLECTION: 'collection',
   HOME: 'home',
   OTHER: 'other',
-} as const; 
+} as const;

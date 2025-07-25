@@ -1,4 +1,4 @@
-export const APP_NAME = "AI Image Converter";
+export const APP_NAME = "Autopictura";
 
 export const APP_CONFIG = {
   name: APP_NAME,
@@ -8,11 +8,11 @@ export const APP_CONFIG = {
 
 /**
  * Metafield constants for AI converter
- * 
+ *
  * These constants are shared between:
  * - App (this file): Used in GraphQL mutations and queries
  * - Theme extension: Manually synced in extensions/theme-extension/blocks/block.liquid
- * 
+ *
  * When updating these values, make sure to update both locations!
  */
 export const METAFIELDS = {
@@ -29,4 +29,4 @@ export const METAFIELDS = {
 
 // Export individual constants for convenience
 export const AI_METAFIELD_NAMESPACE = METAFIELDS.NAMESPACE;
-export const AI_METAFIELD_KEYS = METAFIELDS.KEYS; 
+export const AI_METAFIELD_KEYS = METAFIELDS.KEYS;

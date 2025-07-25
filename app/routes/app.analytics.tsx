@@ -1,4 +1,4 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { LoaderFunctionArgs, HeadersFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import {
   Page,
@@ -9,6 +9,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "~/shopify.server";
+import { boundary } from "@shopify/shopify-app-remix/server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -22,6 +23,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       customerInsights: {},
     },
   };
+};
+
+export const headers: HeadersFunction = (headersArgs) => {
+  return boundary.headers(headersArgs);
 };
 
 export default function AnalyticsPage() {

@@ -1,6 +1,7 @@
-import { useEffect } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useFetcher, useLoaderData } from "@remix-run/react";
+import {useEffect} from "react";
+import { boundary } from "@shopify/shopify-app-remix/server";
+import type {ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "@remix-run/node";
+import {useFetcher, useLoaderData} from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -12,17 +13,17 @@ import {
   InlineStack,
   ProgressBar,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
-import { authenticate } from "~/shopify.server";
-import { APP_NAME } from "~/constants";
+import {Modal, TitleBar, useAppBridge} from "@shopify/app-bridge-react";
+import {authenticate} from "~/shopify.server";
+import {APP_NAME} from "~/constants";
 import drizzleDb from "../db.server";
-import { generationsTable } from "~/db/schema";
-import { eq, desc, and, gte } from "drizzle-orm";
+import {generationsTable} from "~/db/schema";
+import {eq, desc, and, gte} from "drizzle-orm";
 import {Onboarding} from "~/components/Onboarding";
 
 const DEBUG_REQUESTS = process.env.DEBUG_REQUESTS === 'true' || process.env.NODE_ENV === 'development';
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+export const loader = async ({request}: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
   if (DEBUG_REQUESTS) {
@@ -34,7 +35,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     console.log(`[APP_INDEX] Headers:`, Object.fromEntries(request.headers.entries()));
   }
 
-  const { admin, session } = await authenticate.admin(request);
+  const {admin, session} = await authenticate.admin(request);
 
   if (DEBUG_REQUESTS) {
     // Log session details after authentication
@@ -124,13 +125,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+export const headers: HeadersFunction = (headersArgs) => {
+  return boundary.headers(headersArgs);
+};
+
+export const action = async ({request}: ActionFunctionArgs) => {
+  const {admin} = await authenticate.admin(request);
 
   // Original product creation logic
   const color = ["Red", "Orange", "Yellow", "Green"][
     Math.floor(Math.random() * 4)
-  ];
+    ];
   const response = await admin.graphql(
     `#graphql
       mutation populateProduct($product: ProductCreateInput!) {
@@ -181,7 +186,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     {
       variables: {
         productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
+        variants: [{id: variantId, price: "100.00"}],
       },
     },
   );
@@ -191,12 +196,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return {
     product: responseJson!.data!.productCreate!.product,
     variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
+    variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
   };
 };
 
 export default function Index() {
-  const { analyticsData } = useLoaderData<typeof loader>();
+  const {analyticsData} = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
 
   const shopify = useAppBridge();
@@ -224,7 +229,7 @@ export default function Index() {
           <Layout.Section>
             <BlockStack gap="500">
 
-              <Onboarding />
+              <Onboarding/>
 
               <Card>
                 <BlockStack gap="200">
@@ -232,10 +237,12 @@ export default function Index() {
                     Welcome to {APP_NAME}
                   </Text>
                   <Text variant="bodyMd" as="p">
-                    Create beautiful, custom posters of your pets using the power of AI. Enable products for pet customization, manage AI styles, and track generation orders.
+                    Create beautiful, custom posters of your pets using the power of AI. Enable products for pet
+                    customization, manage AI styles, and track generation orders.
                   </Text>
                   <Text variant="bodyMd" as="p">
-                    Get started by enabling products for AI pet generation and creating style collections for your customers to choose from.
+                    Get started by enabling products for AI pet generation and creating style collections for your
+                    customers to choose from.
                   </Text>
                   <Button variant="primary" url="/app/products">
                     Enable Products for AI
@@ -265,7 +272,7 @@ export default function Index() {
                             {analyticsData.totalGenerations}
                           </Text>
                           <Text as="p" variant="bodyMd" tone="success">
-                            {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                            {new Date().toLocaleDateString('en-US', {month: 'long', year: 'numeric'})}
                           </Text>
                         </BlockStack>
                       </Card>
@@ -318,7 +325,7 @@ export default function Index() {
                   </Text>
                   <InlineStack gap="200">
                     <Button
-                      onClick={() => fetcher.submit({}, { method: 'post' })}
+                      onClick={() => fetcher.submit({}, {method: 'post'})}
                       loading={fetcher.state === 'submitting'}
                     >
                       Create New Product
@@ -326,6 +333,9 @@ export default function Index() {
                     <Link url="/app/styles">
                       Manage AI Styles
                     </Link>
+                    <Button onClick={() => shopify.modal.show('test-modal')}>
+                      Open Test Modal
+                    </Button>
                   </InlineStack>
                 </BlockStack>
               </Card>
@@ -333,6 +343,12 @@ export default function Index() {
           </Layout.Section>
         </Layout>
       </BlockStack>
+
+      <Modal id="test-modal" src="/modals/my-dummy-route" variant={'max'}>
+        <TitleBar title="Test Modal">
+          <button onClick={() => shopify.modal.hide('test-modal')}>Close</button>
+        </TitleBar>
+      </Modal>
     </Page>
   );
 }

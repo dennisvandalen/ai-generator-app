@@ -28,29 +28,29 @@ export function isThemeEditor(): boolean {
   if (window.location.hostname.includes('.shopifypreview.com')) {
     return true;
   }
-  
+
   // Check for preview theme parameter
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.has('preview_theme_id')) {
     return true;
   }
-  
+
   // Check if we're in an iframe (theme editor loads site in iframe)
   if (window.top !== window.self || window.parent !== window) {
     return true;
   }
-  
+
   // Check for theme editor specific parameters
   if (urlParams.has('_fd') || urlParams.has('_ab')) {
     return true;
   }
-  
+
   // Check for Shopify admin context
-  if (document.querySelector('meta[name="shopify-checkout-api-token"]') && 
+  if (document.querySelector('meta[name="shopify-checkout-api-token"]') &&
       (window.location.search.includes('preview') || window.location.search.includes('theme'))) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -69,7 +69,10 @@ export function findAddToCartButton(): HTMLElement | null {
     '.add-to-cart-button',
     '.product-add',
     '.btn-addtocart',
-    '[data-add-to-cart]'
+    '[data-add-to-cart]',
+    // Horizon theme selectors
+    'button[id^="BuyButtons-ProductSubmitButton-"]',
+    'add-to-cart-component button'
   ];
 
   for (const selector of selectors) {
@@ -77,7 +80,7 @@ export function findAddToCartButton(): HTMLElement | null {
     if (button) {
       // Verify it's actually an add to cart button by checking text content
       const text = button.textContent?.toLowerCase() || '';
-      if (text.includes('add') || text.includes('cart') || text.includes('bag') || 
+      if (text.includes('add') || text.includes('cart') || text.includes('bag') ||
           (button as HTMLInputElement).name === 'add') {
         return button;
       }
@@ -98,7 +101,11 @@ export function findProductForm(): HTMLFormElement | null {
   const selectors = [
     'form[action*="/cart/add"]',
     '#product-form-template',
-    '.product-form form'
+    '.product-form form',
+    // Horizon theme selectors
+    '.shopify-product-form',
+    'form[id^="BuyButtons-ProductForm-"]',
+    'product-form-component form'
   ];
 
   for (const selector of selectors) {
@@ -109,6 +116,6 @@ export function findProductForm(): HTMLFormElement | null {
       if (hasSubmitButton) return form;
     }
   }
-  
+
   return null;
-} 
+}

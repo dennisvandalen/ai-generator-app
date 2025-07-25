@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs , HeadersFunction } from "@remix-run/node";
 
 import { useLoaderData, useSubmit, useActionData, Link, useNavigate } from "@remix-run/react";
 import {
@@ -16,8 +16,10 @@ import {
   IndexTable, Page,
 } from "@shopify/polaris";
 import { authenticate } from "~/shopify.server";
+import { boundary } from "@shopify/shopify-app-remix/server";
 import { useState, useCallback, useEffect } from "react";
 import db from "../db.server";
+import type { AiStyle } from "~/db/schema";
 import { aiStylesTable } from "~/db/schema";
 import { getShopId } from "~/utils/getShopId";
 import { eq } from "drizzle-orm";
@@ -53,6 +55,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return Response.json({
     aiStyles: styles,
   });
+};
+
+export const headers: HeadersFunction = (headersArgs) => {
+  return boundary.headers(headersArgs);
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -151,8 +157,8 @@ export default function StylesIndexPage() {
     >
       {aiStyles.map(
         (
-          { id, uuid, name, promptTemplate, exampleImageUrl, isActive },
-          index
+          { id, uuid, name, promptTemplate, exampleImageUrl, isActive }: AiStyle,
+          index: number
         ) => (
           <IndexTable.Row id={id.toString()} key={id} position={index}>
             <IndexTable.Cell>

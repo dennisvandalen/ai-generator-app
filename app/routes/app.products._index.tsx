@@ -1,4 +1,4 @@
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
+import type { LoaderFunctionArgs, ActionFunctionArgs , HeadersFunction } from "@remix-run/node";
 
 import { useLoaderData, useFetcher, useNavigate, useLocation } from "@remix-run/react";
 import { useState, useCallback, useEffect } from "react";
@@ -20,9 +20,10 @@ import {
 import { PlusIcon, StoreIcon, ImageIcon } from "@shopify/polaris-icons";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "~/shopify.server";
+import { boundary } from "@shopify/shopify-app-remix/server";
 import drizzleDb from "../db.server";
 import { productsTable, type Product, type NewProduct } from "~/db/schema";
-import {asc, desc, eq} from "drizzle-orm";
+import {asc, desc, eq, and} from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 // Types for the selected product from Resource Picker
@@ -74,30 +75,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     statusFilter = url.searchParams.get('status');
   }
 
-  // Build query
-  let query = drizzleDb
-    .select()
-    .from(productsTable)
-    .where(eq(productsTable.shopId, session.shop));
+  // Build query with all conditions in a single where clause
+  let whereConditions = [eq(productsTable.shopId, session.shop)];
 
   // Apply status filter if provided
   if (statusFilter === 'enabled') {
-    query = query.where(eq(productsTable.isEnabled, true));
+    whereConditions.push(eq(productsTable.isEnabled, true));
   } else if (statusFilter === 'disabled') {
-    query = query.where(eq(productsTable.isEnabled, false));
+    whereConditions.push(eq(productsTable.isEnabled, false));
   }
 
-  // Apply sorting
+  // Determine sort column and direction
+  let sortColumn;
   if (sortField === 'title') {
-    query = query.orderBy(sortDirection === 'asc' ? asc(productsTable.title) : desc(productsTable.title));
+    sortColumn = sortDirection === 'asc' ? asc(productsTable.title) : desc(productsTable.title);
   } else if (sortField === 'updatedAt') {
-    query = query.orderBy(sortDirection === 'asc' ? asc(productsTable.updatedAt) : desc(productsTable.updatedAt));
+    sortColumn = sortDirection === 'asc' ? asc(productsTable.updatedAt) : desc(productsTable.updatedAt);
   } else if (sortField === 'isEnabled') {
-    query = query.orderBy(sortDirection === 'asc' ? asc(productsTable.isEnabled) : desc(productsTable.isEnabled));
+    sortColumn = sortDirection === 'asc' ? asc(productsTable.isEnabled) : desc(productsTable.isEnabled);
   } else {
     // Default to createdAt
-    query = query.orderBy(sortDirection === 'asc' ? asc(productsTable.createdAt) : desc(productsTable.createdAt));
+    sortColumn = sortDirection === 'asc' ? asc(productsTable.createdAt) : desc(productsTable.createdAt);
   }
+
+  // Build the complete query with a single where and orderBy call
+  const query = drizzleDb
+    .select()
+    .from(productsTable)
+    .where(and(...whereConditions))
+    .orderBy(sortColumn);
 
   const products = await query;
 
@@ -107,6 +113,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     currentSort: { field: sortField, direction: sortDirection },
     currentFilter: statusFilter || 'all',
   });
+};
+
+export const headers: HeadersFunction = (headersArgs) => {
+  return boundary.headers(headersArgs);
 };
 
 export const action = async ({ request }: ActionFunctionArgs): Promise<Response> => {

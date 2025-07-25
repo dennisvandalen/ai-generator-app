@@ -37,12 +37,12 @@ export const AiStyleSelection = ({aiStyles, selectedStyles, onSelectedStylesChan
       return;
     }
 
-    const currentStyles = selectedStyles;
-    const draggedIndex = currentStyles.findIndex(uuid => uuid === draggedItem);
-    const targetIndex = currentStyles.findIndex(uuid => uuid === targetStyleUuid);
+    // Work with the current selectedStyles array order (user's intended order)
+    const draggedIndex = selectedStyles.findIndex(uuid => uuid === draggedItem);
+    const targetIndex = selectedStyles.findIndex(uuid => uuid === targetStyleUuid);
 
     if (draggedIndex !== -1 && targetIndex !== -1) {
-      const newStyles = [...currentStyles];
+      const newStyles = [...selectedStyles];
       const [draggedStyle] = newStyles.splice(draggedIndex, 1);
       newStyles.splice(targetIndex, 0, draggedStyle);
       onSelectedStylesChange(newStyles);
@@ -72,106 +72,142 @@ export const AiStyleSelection = ({aiStyles, selectedStyles, onSelectedStylesChan
               </Text>
             )}
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-              gap: '16px',
-              gridAutoFlow: 'dense' // Helps with the ordering of items
-            }}>
-              {/* Render all styles in a single loop with consistent keys */}
-              {aiStyles.map((style) => {
-                const isSelected = selectedStyles.includes(style.uuid);
-                const selectedIndex = selectedStyles.indexOf(style.uuid);
-                const isDragging = draggedItem === style.uuid;
-                const isDraggedOver = draggedOverItem === style.uuid;
+            <BlockStack gap="400">
+              {(() => {
+                // Get selected styles in the order they appear in selectedStyles array
+                const selectedStylesFromList = selectedStyles
+                  .map(uuid => aiStyles.find(style => style.uuid === uuid))
+                  .filter(Boolean) as typeof aiStyles;
+                const unselectedStyles = aiStyles.filter(style => !selectedStyles.includes(style.uuid));
 
-                return (
-                  <div
-                    key={`style-${style.id}`}
+                const renderStyleItem = (style: typeof aiStyles[0], isSelected: boolean, selectedIndex: number) => (
+                  <div 
                     draggable={isSelected && !isLoading}
                     onDragStart={isSelected ? (e) => handleDragStart(e, style.uuid) : undefined}
                     onDragOver={isSelected ? (e) => handleDragOver(e, style.uuid) : undefined}
                     onDragLeave={isSelected ? handleDragLeave : undefined}
                     onDrop={isSelected ? (e) => handleDrop(e, style.uuid) : undefined}
-                    onClick={isLoading ? undefined : () => onToggleStyle(style.uuid, !isSelected)}
-                    style={{
-                      cursor: isLoading ? 'not-allowed' : (isSelected ? 'grab' : 'pointer'),
+                    style={{ 
+                      padding: "8px", 
+                      border: isSelected ? "2px solid #008060" : "1px solid #e1e3e5", 
+                      borderRadius: "6px",
+                      cursor: isLoading ? "not-allowed" : "pointer",
+                      backgroundColor: isSelected ? "#f6f8fa" : "transparent",
+                      opacity: isLoading ? 0.6 : 1,
                       transition: 'all 0.2s ease-in-out',
-                      transform: isDragging ? 'scale(1.05)' : (isSelected ? 'scale(1.02)' : 'scale(1)'),
-                      opacity: isLoading ? 0.6 : (isDragging ? 0.8 : 1),
-                      border: isDraggedOver ? '2px dashed #0066cc' : 'none',
-                      position: 'relative',
-                      order: isSelected ? selectedIndex : aiStyles.length + 1, // Keep selected styles first in order
-                      willChange: 'transform, opacity', // Hint to browser to optimize these animations
+                      transform: draggedItem === style.uuid ? 'scale(1.02)' : 'scale(1)',
+                      border: draggedOverItem === style.uuid ? '2px dashed #0066cc' : (isSelected ? "2px solid #008060" : "1px solid #e1e3e5")
                     }}
+                    onClick={isLoading ? undefined : () => onToggleStyle(style.uuid, !isSelected)}
                   >
-                    <div style={{position: 'relative'}}>
-                      <Card
-                        background={isSelected ? "bg-surface-selected" : "bg-surface-secondary"}
-                        padding="300"
+                    <InlineStack gap="200" align="start" blockAlign="center">
+                      <div 
+                        style={{
+                          cursor: isSelected ? 'grab' : 'default',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '2px',
+                          width: '16px',
+                          justifyContent: 'center'
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
                       >
-                        <InlineStack gap="300" align="start" blockAlign="center">
-                          {isSelected && (
-                            <div style={{
-                              backgroundColor: '#0066cc',
-                              color: 'white',
-                              borderRadius: '50%',
-                              width: '24px',
-                              height: '24px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '12px',
-                              fontWeight: 'bold',
-                              flexShrink: 0
-                            }}>
-                              {selectedIndex + 1}
-                            </div>
-                          )}
-                          {style.exampleImageUrl && (
-                            <div style={{flexShrink: 0}}>
-                              <Thumbnail
-                                source={style.exampleImageUrl}
-                                alt={style.name}
-                                size="small"
-                              />
-                            </div>
-                          )}
-                          <BlockStack gap="100">
-                            <Text variant="bodyMd" fontWeight="semibold" as="span">
-                              {style.name}
-                            </Text>
-                            <div style={{alignSelf: 'flex-start'}}>
-                              <Badge
-                                tone={style.isActive ? "success" : "critical"}
-                                size="small"
-                              >
-                                {style.isActive ? "Active" : "Inactive"}
-                              </Badge>
-                            </div>
-                          </BlockStack>
-                        </InlineStack>
-                      </Card>
-                      <div style={{
-                        position: 'absolute',
-                        top: '12px',
-                        right: '12px',
-                        zIndex: 1
-                      }}>
-                        <Checkbox
-                          label={isSelected ? `Disable ${style.name} for this product` : `Enable ${style.name} for this product`}
-                          labelHidden
-                          checked={isSelected}
-                          onChange={() => onToggleStyle(style.uuid, !isSelected)}
-                          disabled={isLoading}
-                        />
+                        {isSelected && (
+                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                            <circle cx="3" cy="3" r="1" fill="#666"/>
+                            <circle cx="9" cy="3" r="1" fill="#666"/>
+                            <circle cx="3" cy="6" r="1" fill="#666"/>
+                            <circle cx="9" cy="6" r="1" fill="#666"/>
+                            <circle cx="3" cy="9" r="1" fill="#666"/>
+                            <circle cx="9" cy="9" r="1" fill="#666"/>
+                          </svg>
+                        )}
                       </div>
-                    </div>
+                      <Checkbox
+                        label=""
+                        id={`style-${style.id}`}
+                        checked={isSelected}
+                        onChange={() => onToggleStyle(style.uuid, !isSelected)}
+                        disabled={isLoading}
+                      />
+                      {style.exampleImageUrl && (
+                        <div style={{flexShrink: 0}}>
+                          <Thumbnail
+                            source={style.exampleImageUrl}
+                            alt={style.name}
+                            size="small"
+                          />
+                        </div>
+                      )}
+                      <InlineStack gap="150" align="start" blockAlign="center">
+                        <Text variant="bodySm" as="p" fontWeight="medium">
+                          {style.name}
+                        </Text>
+                        <Badge
+                          tone={style.isActive ? "success" : "critical"}
+                          size="small"
+                        >
+                          {style.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </InlineStack>
+                      {isSelected && (
+                        <div style={{
+                          backgroundColor: '#0066cc',
+                          color: 'white',
+                          borderRadius: '50%',
+                          width: '18px',
+                          height: '18px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '10px',
+                          fontWeight: 'bold',
+                          flexShrink: 0,
+                          marginLeft: 'auto'
+                        }}>
+                          {selectedIndex + 1}
+                        </div>
+                      )}
+                    </InlineStack>
                   </div>
                 );
-              })}
 
-            </div>
+                return (
+                  <>
+                    {selectedStylesFromList.length > 0 && (
+                      <BlockStack gap="200">
+                        <Text variant="headingSm" as="h4">
+                          Selected Styles ({selectedStylesFromList.length})
+                        </Text>
+                        <BlockStack gap="200">
+                          {selectedStylesFromList.map((style, index) => 
+                            <div key={`selected-${style.uuid}`}>
+                              {renderStyleItem(style, true, index)}
+                            </div>
+                          )}
+                        </BlockStack>
+                      </BlockStack>
+                    )}
+
+                    {unselectedStyles.length > 0 && (
+                      <BlockStack gap="200">
+                        <Text variant="headingSm" as="h4">
+                          Available Styles ({unselectedStyles.length})
+                        </Text>
+                        <BlockStack gap="200">
+                          {unselectedStyles.map((style) => 
+                            <div key={`unselected-${style.uuid}`}>
+                              {renderStyleItem(style, false, -1)}
+                            </div>
+                          )}
+                        </BlockStack>
+                      </BlockStack>
+                    )}
+                  </>
+                );
+              })()}
+
+            </BlockStack>
 
             <InlineStack gap="200" align="space-between">
               <Text variant="bodySm" tone="subdued" as="span">

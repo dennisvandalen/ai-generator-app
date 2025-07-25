@@ -5,3 +5,6 @@ shopify-app-remix
 */*.yml
 .shopify
 extensions/
+app/types/admin.generated.d.ts
+build/
+extensions/theme-extension/assets/

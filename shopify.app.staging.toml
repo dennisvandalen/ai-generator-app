@@ -1,0 +1,41 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "feffd41c941cd3fd8ecf5f4fd74903fb"
+name = "[STAGING] Autopictura"
+handle = "autopictura-staging"
+application_url = "https://autopictura-beta.fly.dev"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+include_config_on_deploy = true
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products,write_orders,read_themes,write_app_proxy"
+
+[auth]
+redirect_urls = [
+  "https://autopictura-beta.fly.dev/auth/callback",
+  "https://autopictura-beta.fly.dev/auth/shopify/callback",
+  "https://autopictura-beta.fly.dev/api/auth/callback"
+]
+
+[pos]
+embedded = false
+
+[app_proxy]
+url = "https://autopictura-beta.fly.dev"
+prefix = "tools"
+subpath = "autopictura"

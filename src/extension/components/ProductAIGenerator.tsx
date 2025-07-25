@@ -5,6 +5,7 @@ import Cropper from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import ReactDOM from 'react-dom';
 import { AIGeneratorAPI } from '../../extension/api/client';
+import { useTranslations } from '../utils/i18n';
 
 interface ProductAIGeneratorProps {
   productId: string | number;
@@ -25,6 +26,9 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
   onError,
   onUpdateGenerationState,
 }) => {
+  // Get translations
+  const t = useTranslations();
+  
   // Performance monitoring - track renders
   const renderCountRef = useRef(0);
   const lastRenderTimeRef = useRef(Date.now());
@@ -85,14 +89,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
   const [selectedGeneratedImageUrl, setSelectedGeneratedImageUrl] = useState<string | null>(null);
   const componentRef = useRef<HTMLDivElement>(null);
 
-  const loadingMessages = [
-    "Summoning pixels...",
-    "Unleashing creativity...",
-    "Crafting your masterpiece...",
-    "Adding a touch of magic...",
-    "Almost there...",
-    "Generating AI art...",
-  ];
+  const loadingMessages = t.loadingMessages;
   const [currentLoadingMessageIndex, setCurrentLoadingMessageIndex] = useState(0);
 
   const generationsContainerRef = useRef<HTMLDivElement>(null);
@@ -194,6 +191,19 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
   // Optimized to avoid unnecessary re-renders
   const getSelectedVariantId = (): string | null => {
     try {
+      // For performance logging
+      const startTime = performance.now();
+
+      // Method 1: Check URL parameters
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const variantFromUrl = params.get('variant');
+        if (variantFromUrl) {
+          console.log('✅ Found variant ID via URL params:', variantFromUrl);
+          return variantFromUrl;
+        }
+      }
+
       // Look for the product form in the current page
       const productForm = document.querySelector('form[action*="/cart/add"]') as HTMLFormElement;
       if (!productForm) {
@@ -201,52 +211,70 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         return null;
       }
 
-      // For performance logging
-      const startTime = performance.now();
-
-      // Method 1: Look for the variant ID input field
+      // Method 2: Look for the variant ID input field
       const variantInput = productForm.querySelector('input[name="id"]') as HTMLInputElement;
-      if (variantInput) {
+      if (variantInput && variantInput.value) {
         const variantId = variantInput.value;
         console.log('✅ Found variant ID via input[name="id"]:', variantId);
         return variantId;
       }
 
-      // Method 2: Look for any input with class containing "product-variant-id"
+      // Method 3: Horizon theme support - Look for checked radio inputs with data-variant-id
+      const checkedRadios = productForm.querySelectorAll('input[type="radio"]:checked[data-variant-id]') as NodeListOf<HTMLInputElement>;
+      if (checkedRadios.length > 0) {
+        // Get the variant ID from the last checked radio (in case of multiple option sets)
+        const lastCheckedRadio = checkedRadios[checkedRadios.length - 1];
+        const variantId = lastCheckedRadio.getAttribute('data-variant-id');
+        if (variantId) {
+          console.log('✅ Found variant ID via Horizon theme checked radio data-variant-id:', variantId);
+          return variantId;
+        }
+      }
+
+      // Method 4: Look for any input with class containing "product-variant-id"
       const variantInputByClass = productForm.querySelector('input[class*="product-variant-id"]') as HTMLInputElement;
-      if (variantInputByClass) {
+      if (variantInputByClass && variantInputByClass.value) {
         const variantId = variantInputByClass.value;
         console.log('✅ Found variant ID via class selector:', variantId);
         return variantId;
       }
 
-      // Method 3: Look for checked radio buttons or selected options
+      // Method 5: Look for checked radio buttons or selected options (value-based detection)
       const variantSelectors = productForm.querySelectorAll('input[type="radio"], input[type="checkbox"], select');
       for (const selector of variantSelectors) {
-        if (selector instanceof HTMLInputElement && selector.checked) {
+        if (selector instanceof HTMLInputElement && selector.checked && selector.value && /^\d+$/.test(selector.value)) {
           const variantId = selector.value;
-          console.log('✅ Found variant ID via checked input:', variantId);
+          console.log('✅ Found variant ID via checked input value:', variantId);
           return variantId;
-        } else if (selector instanceof HTMLSelectElement) {
+        } else if (selector instanceof HTMLSelectElement && selector.value && /^\d+$/.test(selector.value)) {
           const variantId = selector.value;
-          console.log('✅ Found variant ID via select:', variantId);
+          console.log('✅ Found variant ID via select value:', variantId);
           return variantId;
         }
       }
 
-      // Method 4: Look for data attributes on buttons or elements
+      // Method 6: Look for data attributes on active/selected elements
       const variantElements = productForm.querySelectorAll('[data-variant-id], [data-variant], [data-product-variant]');
       for (const element of variantElements) {
         const variantId = element.getAttribute('data-variant-id') ||
                          element.getAttribute('data-variant') ||
                          element.getAttribute('data-product-variant');
-        if (variantId && (element.classList.contains('selected') || element.classList.contains('active'))) {
-          console.log('✅ Found variant ID via data attribute:', variantId);
+        if (variantId && (element.classList.contains('selected') || element.classList.contains('active') || 
+                         (element as HTMLInputElement).checked)) {
+          console.log('✅ Found variant ID via data attribute on active element:', variantId);
           return variantId;
         }
       }
 
-      // Method 5: Look for any element with variant ID in its text content or attributes
+      // Method 7: Fallback - Look for form input value directly (some themes store it differently)
+      const directFormInput = document.querySelector('form[action="/cart/add"] input[name="id"]') as HTMLInputElement;
+      if (directFormInput && directFormInput.value) {
+        const variantId = directFormInput.value;
+        console.log('✅ Found variant ID via direct form input fallback:', variantId);
+        return variantId;
+      }
+
+      // Method 8: Look for any element with variant ID in its attributes (broad search)
       const allElements = productForm.querySelectorAll('*');
       for (const element of allElements) {
         const attributes = element.attributes;
@@ -378,14 +406,28 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         }
       });
 
-      // Method 3: Listen for clicks on variant buttons/options
-      const variantButtons = productForm.querySelectorAll('button, .variant-option, [data-variant-id]');
+      // Method 3: Listen for clicks on variant buttons/options (including Horizon theme)
+      const variantButtons = productForm.querySelectorAll('button, .variant-option, [data-variant-id], .variant-option__button-label');
       console.log('Found variant buttons:', variantButtons.length);
       variantButtons.forEach(button => {
         button.addEventListener('click', handleVariantChange);
       });
 
-      // Method 4: MutationObserver to watch for dynamic changes
+      // Method 4: Horizon theme specific - listen for variant-picker events
+      const variantPicker = document.querySelector('variant-picker');
+      if (variantPicker) {
+        console.log('🎯 Found Horizon theme variant-picker, setting up listeners');
+        variantPicker.addEventListener('change', handleVariantChange);
+        variantPicker.addEventListener('input', handleVariantChange);
+        
+        // Also listen for changes within the variant picker
+        const variantPickerForm = variantPicker.querySelector('form');
+        if (variantPickerForm) {
+          variantPickerForm.addEventListener('change', handleVariantChange);
+        }
+      }
+
+      // Method 5: MutationObserver to watch for dynamic changes
       const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
           if (mutation.type === 'attributes' &&
@@ -403,10 +445,31 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         subtree: true
       });
 
-      // Method 5: Listen for custom events that themes might dispatch
+      // Method 6: Listen for custom events that themes might dispatch
       document.addEventListener('variant:change', handleVariantChange);
       document.addEventListener('variantChange', handleVariantChange);
       document.addEventListener('product:variant:change', handleVariantChange);
+      // Horizon theme might use different event names
+      document.addEventListener('variant:updated', handleVariantChange);
+      document.addEventListener('product:variant:updated', handleVariantChange);
+
+      // Method 7: Listen for URL changes (for ?variant= parameter detection)
+      window.addEventListener('popstate', handleVariantChange);
+      window.addEventListener('hashchange', handleVariantChange);
+      
+      // Also listen for programmatic URL changes (some themes use history.pushState)
+      const originalPushState = history.pushState;
+      const originalReplaceState = history.replaceState;
+      
+      history.pushState = function(...args) {
+        originalPushState.apply(history, args);
+        setTimeout(handleVariantChange, 0); // Async to ensure URL is updated
+      };
+      
+      history.replaceState = function(...args) {
+        originalReplaceState.apply(history, args);
+        setTimeout(handleVariantChange, 0); // Async to ensure URL is updated
+      };
 
       // Return cleanup function
       return () => {
@@ -417,9 +480,28 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         variantButtons.forEach(button => {
           button.removeEventListener('click', handleVariantChange);
         });
+        if (variantPicker) {
+          variantPicker.removeEventListener('change', handleVariantChange);
+          variantPicker.removeEventListener('input', handleVariantChange);
+          const variantPickerForm = variantPicker.querySelector('form');
+          if (variantPickerForm) {
+            variantPickerForm.removeEventListener('change', handleVariantChange);
+          }
+        }
         document.removeEventListener('variant:change', handleVariantChange);
         document.removeEventListener('variantChange', handleVariantChange);
         document.removeEventListener('product:variant:change', handleVariantChange);
+        document.removeEventListener('variant:updated', handleVariantChange);
+        document.removeEventListener('product:variant:updated', handleVariantChange);
+        
+        // Remove URL change listeners
+        window.removeEventListener('popstate', handleVariantChange);
+        window.removeEventListener('hashchange', handleVariantChange);
+        
+        // Restore original history methods
+        history.pushState = originalPushState;
+        history.replaceState = originalReplaceState;
+        
         observer.disconnect();
       };
     };
@@ -477,11 +559,11 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
       const style = selectedStyle;
       const imageUrl = uploadedImageUrl || (typeof window !== 'undefined' ? (window as any).__aiUploadedImageUrl : null);
       if (!style) {
-        setError('Please select a style.');
+        setError(t.selectStyleToContinue);
         return;
       }
       if (!imageUrl) {
-        setError('Please upload and crop an image first.');
+        setError(t.uploadImageToContinue);
         return;
       }
       setGenerationLoading(true);
@@ -511,7 +593,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
           onGenerationStart?.(selectedStyle, initialSelectedImageUrl);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to generate AI art');
+        setError(err instanceof Error ? err.message : t.generateAiArt.replace('🎨 ', ''));
         onUpdateGenerationState(false, null, null); // Fix: Add missing third parameter
       } finally {
         setGenerationLoading(false);
@@ -610,7 +692,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
             (window as any).__aiUploadedImageUrl = url;
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Upload failed');
+          setError(err instanceof Error ? err.message : t.uploading);
         } finally {
           setIsUploading(false); // Set loading to false after upload attempt
         }
@@ -618,7 +700,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         setIsUploading(false); // Set loading to false if no cropped image
       }
     } catch (e) {
-      setError('Failed to crop image');
+      setError(t.cropImage);
       setIsUploading(false); // Set loading to false on crop error
     }
   }, [imageSrc, croppedAreaPixels, productId, getCroppedImg]);
@@ -650,7 +732,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
     return (
       <div className="ai-generator-loading">
         <div className="ai-generator-spinner"></div>
-        <p>Loading AI generation options...</p>
+        <p>{t.loadingAiOptions}</p>
       </div>
     );
   }
@@ -658,8 +740,8 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
   if (error) {
     return (
       <div className="ai-generator-error">
-        <p>Error: {error}</p>
-        <button onClick={loadProductData}>Retry</button>
+        <p>{t.error}: {error}</p>
+        <button onClick={loadProductData}>{t.retry}</button>
       </div>
     );
   }
@@ -667,7 +749,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
   if (!productData?.enabled) {
     return (
       <div className="ai-generator-disabled">
-        <p>{productData?.message || 'AI generation is not available for this product'}</p>
+        <p>{productData?.message || t.notAvailable}</p>
       </div>
     );
   }
@@ -711,7 +793,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
             }
           }
         `}</style>
-        <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 12 }}>Crop your image</div>
+        <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 12 }}>{t.cropImage}</div>
         <div style={{ position: 'relative', width: 340, height: 340, background: '#eee', margin: '0 auto' }}>
           {/* Use variant aspect ratio if available, otherwise fallback to default */}
           <Cropper
@@ -727,7 +809,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
           />
         </div>
         <div style={{ margin: '18px 0 0 0', textAlign: 'center' }}>
-          <label style={{ fontSize: 13, marginRight: 8 }}>Zoom</label>
+          <label style={{ fontSize: 13, marginRight: 8 }}>{t.zoom}</label>
           <input
             type="range"
             min={1}
@@ -739,10 +821,10 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
           />
         </div>
         <div style={{ marginTop: 18, textAlign: 'center' }}>
-          <button type="button" onClick={async () => { await showCroppedImage(); setShowCropperModal(false); }} style={{ padding: '6px 18px', borderRadius: 4, border: '1px solid #3498db', background: '#3498db', color: '#fff', fontWeight: 600, fontSize: 15, cursor: isUploading ? 'not-allowed' : 'pointer' }} disabled={isUploading}>{isUploading ? 'Uploading...' : 'Crop'}</button>
-          <button type="button" onClick={() => { setShowCropperModal(false); if (!croppedImage) setImageSrc(null); }} style={{ marginLeft: 12, padding: '6px 18px', borderRadius: 4, border: '1px solid #ccc', background: '#f5f5f5', color: '#333', fontWeight: 500, fontSize: 15, cursor: 'pointer' }}>Cancel</button>
+          <button type="button" onClick={async () => { await showCroppedImage(); setShowCropperModal(false); }} style={{ padding: '6px 18px', borderRadius: 4, border: '1px solid #3498db', background: '#3498db', color: '#fff', fontWeight: 600, fontSize: 15, cursor: isUploading ? 'not-allowed' : 'pointer' }} disabled={isUploading}>{isUploading ? t.uploading : t.crop}</button>
+          <button type="button" onClick={() => { setShowCropperModal(false); if (!croppedImage) setImageSrc(null); }} style={{ marginLeft: 12, padding: '6px 18px', borderRadius: 4, border: '1px solid #ccc', background: '#f5f5f5', color: '#333', fontWeight: 500, fontSize: 15, cursor: 'pointer' }}>{t.cancel}</button>
         </div>
-        <button type="button" onClick={() => { setShowCropperModal(false); if (!croppedImage) setImageSrc(null); }} style={{ position: 'absolute', top: 12, right: 16, background: 'none', border: 'none', fontSize: 22, color: '#888', cursor: 'pointer' }} aria-label="Close">×</button>
+        <button type="button" onClick={() => { setShowCropperModal(false); if (!croppedImage) setImageSrc(null); }} style={{ position: 'absolute', top: 12, right: 16, background: 'none', border: 'none', fontSize: 22, color: '#888', cursor: 'pointer' }} aria-label={t.close}>{t.close}</button>
       </div>
     </div>,
     document.body
@@ -750,12 +832,12 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
 
   return (
     <div ref={componentRef}>
-      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, letterSpacing: 0.2 }}>Customize</div>
+      <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8, letterSpacing: 0.2 }}>{t.customize}</div>
       <div className="ai-generator-compact-box">
         {/* Only show style selection if there are multiple styles */}
         {styles.length > 1 && (
           <>
-            <legend className="form__label ai-generator-style-label">Select style:</legend>
+            <legend className="form__label ai-generator-style-label">{t.selectStyle}</legend>
             <div className="ai-generator-styles">
               {styles.map((style) => (
                 <div
@@ -777,7 +859,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         )}
         {/* Image Upload + Crop Tool */}
         <div style={{ margin: styles.length > 1 ? '24px 0' : '0' }}>
-          <legend className="form__label ai-generator-style-label">Upload your image:</legend>
+          <legend className="form__label ai-generator-style-label">{t.uploadImage}</legend>
           {!imageSrc && (
             <div
               className={`ai-generator-drop-area ${isDragging ? 'dragging' : ''}`}
@@ -812,15 +894,15 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
                 input.click();
               }}
             >
-              Drag & Drop your image here or click to upload
+              {t.dragDropText}
             </div>
           )}
           {croppedImage && (
             <div style={{ textAlign: 'center' }}>
               <img src={croppedImage} alt="Cropped preview" style={{ width: 180, height: 180, objectFit: 'contain', borderRadius: 8, border: '1px solid #eee' }} />
               <div style={{ marginTop: 8 }}>
-                <button type="button" onClick={() => setShowCropperModal(true)} style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer' }}>Crop Again</button>
-                <button type="button" onClick={() => { setImageSrc(null); setCroppedImage(null); }} style={{ marginLeft: 8, padding: '4px 12px', borderRadius: 4, border: '1px solid #e57373', background: '#ffeaea', color: '#c00', cursor: 'pointer' }}>Remove</button>
+                <button type="button" onClick={() => setShowCropperModal(true)} style={{ padding: '4px 12px', borderRadius: 4, border: '1px solid #ccc', background: '#f5f5f5', cursor: 'pointer' }}>{t.cropAgain}</button>
+                <button type="button" onClick={() => { setImageSrc(null); setCroppedImage(null); }} style={{ marginLeft: 8, padding: '4px 12px', borderRadius: 4, border: '1px solid #e57373', background: '#ffeaea', color: '#c00', cursor: 'pointer' }}>{t.remove}</button>
               </div>
             </div>
           )}
@@ -842,14 +924,14 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
                 {loadingMessages[currentLoadingMessageIndex]}
               </>
             ) : generationState.generationSelected ? (
-              '🔄 Change Generation'
+              t.changeGeneration
             ) : (
-              '🎨 Generate AI Art'
+              t.generateAiArt
             )}
           </button>
           {generationResult && generationResult.length > 0 && (
             <div ref={generationsContainerRef} style={{ marginTop: 16, textAlign: 'center' }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>Select your preferred AI Art:</div>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>{t.selectPreferred}</div>
               {generationResult.map((generationSet, setIndex) => (
                 <div key={setIndex} style={{ marginBottom: 20 }}> {/* Add margin between sets */}
                   {generationSet.generations && generationSet.generations.length > 0 && (
@@ -899,12 +981,12 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
             }}
           >
             {generationState.generationSelected
-              ? '✅ Generation Selected'
+              ? t.generationSelected
               : !currentVariantId
-                ? '⚠️ Select a variant first'
+                ? t.selectVariantFirst
                 : styles.length === 1
-                  ? '🚀 Upload image to continue'
-                  : '🚀 Select AI Style to continue'
+                  ? t.uploadImageToContinue
+                  : t.selectStyleToContinue
             }
           </div>
         </div>

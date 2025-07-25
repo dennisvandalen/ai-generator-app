@@ -83,6 +83,90 @@ export async function loader({ request }) {
 - ✅ Via proxy: `https://your-shop.myshopify.com/tools/ai-studio/api/your-route` (authenticated)
 - ❌ Direct: `https://your-tunnel.com/api/your-route` (fails authentication)
 
+## Multi-Environment Setup
+
+This application supports three distinct environments: development, staging, and production. Each environment has its own configuration files and deployment process.
+
+### Environment Overview
+
+| Environment | Purpose | URL | Configuration Files |
+|-------------|---------|-----|---------------------|
+| Development | Local development and testing | http://localhost:3000 | shopify.app.toml, .env |
+| Staging | Testing in a production-like environment | https://ai-generator-app-staging.fly.dev | shopify.app.staging.toml, fly.staging.toml |
+| Production | Live application for real users | https://autopictura.fly.dev | shopify.app.production.toml, fly.toml |
+
+### Configuration Files
+
+#### Shopify Configuration
+
+- **Development**: `shopify.app.toml` - Used for local development
+- **Staging**: `shopify.app.staging.toml` - Used for the staging environment
+- **Production**: `shopify.app.production.toml` - Used for the production environment
+
+#### Fly.io Configuration
+
+- **Staging**: `fly.staging.toml` - Deploys to the staging app on Fly.io
+- **Production**: `fly.toml` - Deploys to the production app on Fly.io
+
+### Environment Variables
+
+Each environment requires specific environment variables:
+
+#### Development
+- Uses local SQLite database by default
+- Environment variables are stored in `.env` file
+
+#### Staging
+- Uses Turso database with staging credentials
+- Required environment variables in `fly.staging.toml`:
+  - `APP_ENV="staging"`
+  - `STAGING_TURSO_CONNECTION_URL="libsql://your-staging-database-url.turso.io"`
+  - `STAGING_TURSO_AUTH_TOKEN="your-staging-auth-token"`
+
+#### Production
+- Uses Turso database with production credentials
+- Required environment variables in `fly.toml`:
+  - `APP_ENV="production"`
+  - `TURSO_CONNECTION_URL="libsql://your-production-database-url.turso.io"`
+  - `TURSO_AUTH_TOKEN="your-production-auth-token"`
+
+### Switching Between Environments
+
+Use the following npm scripts to switch between environments:
+
+```bash
+# Switch to development environment
+npm run config:use:dev
+
+# Switch to staging environment
+npm run config:use:staging
+
+# Switch to production environment
+npm run config:use:production
+```
+
+### Deployment Process
+
+#### Deploying to Staging
+
+```bash
+# Deploy the Shopify app to staging
+npm run deploy:staging
+
+# Deploy to Fly.io staging
+npm run fly:deploy:staging
+```
+
+#### Deploying to Production
+
+```bash
+# Deploy the Shopify app to production
+npm run deploy:production
+
+# Deploy to Fly.io production
+npm run fly:deploy:production
+```
+
 ## Deployment
 
 ### Application Storage
@@ -339,7 +423,38 @@ expires: sessionData.expires ? new Date(sessionData.expires) : undefined
 4. **Serverless Ready**: Perfect for Cloudflare Workers and D1
 5. **SQL-like**: More familiar syntax for developers who know SQL
 
-### Future Cloudflare D1 Migration
+### Production Database Options
+
+#### Turso Database Integration
+
+This app now supports using [Turso](https://turso.tech) in production environments. Turso is a distributed database built on libSQL (a fork of SQLite) that provides:
+
+- Global distribution with low latency
+- SQLite compatibility
+- Serverless-friendly architecture
+- High performance and reliability
+
+The app automatically uses:
+- **Development**: Local SQLite database
+- **Production**: Turso database (when configured)
+
+**Configuration:**
+
+1. Create a Turso database using their CLI or dashboard
+2. Set the following environment variables in your production environment:
+   ```
+   TURSO_CONNECTION_URL=https://your-database-name.turso.io
+   TURSO_AUTH_TOKEN=your-auth-token
+   ```
+3. Deploy your app
+
+The database configuration in `app/db.server.ts` will automatically detect the production environment and use Turso instead of SQLite.
+
+**Migration Support:**
+
+The `drizzle.config.ts` file has been updated to support Turso for migrations in production. When running migrations in a production environment with Turso configured, it will use the Turso connection details.
+
+#### Future Cloudflare D1 Migration
 
 To deploy to Cloudflare D1 in the future:
 

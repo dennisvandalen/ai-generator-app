@@ -12,99 +12,15 @@
     {
       "idx": 1,
       "version": "6",
-      "when": 1751992127828,
-      "tag": "0001_clumsy_jack_murdock",
+      "when": 1753346668996,
+      "tag": "0001_military_senator_kelly",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "6",
-      "when": 1751993292366,
-      "tag": "0002_wooden_ben_grimm",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1752066129270,
-      "tag": "0003_dazzling_stephen_strange",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1752305294525,
-      "tag": "0004_thin_yellow_claw",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1752593286668,
-      "tag": "0005_fancy_moira_mactaggert",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1752593367129,
-      "tag": "0006_aromatic_zaran",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1752845988003,
-      "tag": "0007_lush_sharon_ventura",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1752846341942,
-      "tag": "0008_naive_eternals",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "6",
-      "when": 1752846907348,
-      "tag": "0009_late_proteus",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "6",
-      "when": 1752847510917,
-      "tag": "0010_glossy_orphan",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "6",
-      "when": 1752849354399,
-      "tag": "0011_quiet_moira_mactaggert",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "6",
-      "when": 1752921708567,
-      "tag": "0012_confused_annihilus",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "6",
-      "when": 1753094711598,
-      "tag": "0013_ordinary_snowbird",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "6",
-      "when": 1753170915075,
-      "tag": "0014_pale_smasher",
+      "when": 1753347013001,
+      "tag": "0002_overconfident_golden_guardian",
       "breakpoints": true
     }
   ]

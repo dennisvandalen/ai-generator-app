@@ -5,7 +5,7 @@ import { SetupGuide } from "./SetupGuide";
 // Define interfaces for the component
 interface ButtonProps {
   url?: string;
-  external?: boolean;
+  external?: string;
   onAction?: () => void;
 }
 
@@ -81,14 +81,14 @@ const ITEMS: SetupItem[] = [
       content: "Add product",
       props: {
         url: "https://www.example.com",
-        external: true,
+        external: "true",
       },
     },
     secondaryButton: {
       content: "Import products",
       props: {
         url: "https://www.example.com",
-        external: true,
+        external: "true",
       },
     },
   },
@@ -122,7 +122,7 @@ const ITEMS: SetupItem[] = [
       content: "Add a language",
       props: {
         url: "https://www.example.com",
-        external: true,
+        external: "true",
       },
     },
   },

@@ -52,7 +52,7 @@ export class ProductDataAPI {
 
   constructor(shop: string) {
     this.shop = shop;
-    this.baseUrl = `/tools/ai-studio/api/product`;
+    this.baseUrl = `/tools/autopictura/api/product`;
   }
 
   /**

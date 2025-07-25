@@ -1,4 +1,4 @@
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
+import type { LoaderFunctionArgs, ActionFunctionArgs , HeadersFunction } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import {
   Page,
@@ -13,6 +13,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
+import { boundary } from "@shopify/shopify-app-remix/server";
 
 import { AppPermissions } from "../components/AppPermissions";
 
@@ -81,6 +82,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     missingScopes,
     hasNewScopes,
   };
+};
+
+export const headers: HeadersFunction = (headersArgs) => {
+  return boundary.headers(headersArgs);
 };
 
 export default function SettingsPage() {

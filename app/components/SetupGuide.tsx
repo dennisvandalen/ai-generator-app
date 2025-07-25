@@ -22,7 +22,7 @@ import styles from './SetupGuide.module.css';
 // Interface for button props
 interface ButtonProps {
   url?: string;
-  external?: boolean;
+  external?: string;
   onAction?: () => void;
   // Removed [key: string]: any to avoid using 'any' type
 }

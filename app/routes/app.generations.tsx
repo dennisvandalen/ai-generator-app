@@ -1,4 +1,4 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { LoaderFunctionArgs, HeadersFunction } from "@remix-run/node";
 import { useLoaderData, useNavigate } from "@remix-run/react";
 import {
   Page,
@@ -16,6 +16,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "~/shopify.server";
+import { boundary } from "@shopify/shopify-app-remix/server";
 import drizzleDb from "../db.server";
 import { generationsTable, type Generation } from "~/db/schema";
 import { eq, desc, count } from "drizzle-orm";
@@ -74,6 +75,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       totalPages: Math.ceil(totalCount / pageSize),
     },
   };
+};
+
+export const headers: HeadersFunction = (headersArgs) => {
+  return boundary.headers(headersArgs);
 };
 
 export default function GenerationsPage() {

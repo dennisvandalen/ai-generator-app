@@ -8,6 +8,7 @@ interface GenerateImageParams {
   imageUrl: string;
   numImages: number;
   styleImageUrl: string;
+  bypassMock?: boolean;
 }
 
 interface GenerationResult {
@@ -34,10 +35,10 @@ export class AIGenerationService {
   }
 
   async generateImage(params: GenerateImageParams): Promise<GenerationResult> {
-    const { prompt, imageUrl, numImages, styleImageUrl } = params;
+    const { prompt, imageUrl, numImages, styleImageUrl, bypassMock } = params;
     const startTime = Date.now();
 
-    if (process.env.MOCK_AI_GENERATION === 'true') {
+    if (process.env.MOCK_AI_GENERATION === 'true' && !bypassMock) {
       const mockImageUrls: string[] = [];
 
       for (let i = 0; i < numImages; i++) {
@@ -99,14 +100,10 @@ export class AIGenerationService {
       input: {
         prompt: prompt,
         image_url: imageUrl,
-        num_inference_steps: 28,
         guidance_scale: 3.5,
         num_images: numImages,
-        enable_safety_checker: true,
         output_format: "png",
-        aspect_ratio: "1:1",
-        strength: 0.85,
-      },
+      }
     }) as any;
 
     const processingTime = Date.now() - startTime;

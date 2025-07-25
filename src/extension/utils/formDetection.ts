@@ -16,7 +16,10 @@ export function findAddToCartButton(): HTMLElement | null {
     '.btn-addtocart',
     'button:contains("Add to cart")',
     'button:contains("Add to bag")',
-    '[data-add-to-cart]'
+    '[data-add-to-cart]',
+    // Horizon theme selectors
+    'button[id^="BuyButtons-ProductSubmitButton-"]',
+    'add-to-cart-component button'
   ];
 
   for (const selector of selectors) {
@@ -40,6 +43,16 @@ export function findProductForm(): HTMLFormElement | null {
     if (form) return form;
   }
 
+  // Horizon theme priority - look for product-form-component first
+  const productFormComponent = document.querySelector('product-form-component');
+  if (productFormComponent) {
+    const horizonForm = productFormComponent.querySelector('form[action*="/cart/add"]') as HTMLFormElement;
+    if (horizonForm) {
+      console.log('✅ Found Horizon theme product form via product-form-component');
+      return horizonForm;
+    }
+  }
+
   // Fallback selectors (prefer forms that actually contain add buttons)
   const selectors = [
     'form:has(button[name="add"])',
@@ -47,7 +60,11 @@ export function findProductForm(): HTMLFormElement | null {
     'form:has(.add-to-cart)',
     '#product-form-template',
     '.product-form form',
-    'form[action*="/cart/add"]'
+    'form[action*="/cart/add"]',
+    // Horizon theme selectors
+    '.shopify-product-form',
+    'form[id^="BuyButtons-ProductForm-"]',
+    'product-form-component form'
   ];
 
   for (const selector of selectors) {
@@ -59,11 +76,11 @@ export function findProductForm(): HTMLFormElement | null {
         if (hasSubmitButton) return form;
       }
     } catch (e) {
-      // Skip invalid selectors
+      // Skip invalid selectors (like :has() in older browsers)
       continue;
     }
   }
-  
+
   // Last resort - any cart form
   return document.querySelector('form[action*="/cart/add"]') as HTMLFormElement;
 }
@@ -78,7 +95,11 @@ export function findButtonsContainer(): HTMLElement | null {
     '.product-buttons',
     '.cart-buttons',
     '.buy-buttons',
-    '.purchase-buttons'
+    '.purchase-buttons',
+    // Horizon theme selectors
+    '.product-form-buttons',
+    '.product-form-buttons--stacked',
+    'span.buy-buttons-block'
   ];
 
   for (const selector of containerSelectors) {
@@ -234,7 +255,7 @@ export function preventFormSubmission(): void {
     e.preventDefault();
     e.stopPropagation();
     console.log('🚫 Form submission prevented - no AI generation selected');
-    
+
     // Show a brief notification
     const container = findButtonsContainer();
     if (container) {
@@ -256,22 +277,22 @@ export function preventFormSubmission(): void {
       `;
       notification.textContent = '🎨 Please select AI generation first';
       container.appendChild(notification);
-      
+
       setTimeout(() => {
         notification.remove();
       }, 2000);
     }
-    
+
     return false;
   };
 
   // Store the function reference for later removal
   form.setAttribute('data-ai-prevention-active', 'true');
   (form as any).__aiPreventSubmit = preventSubmit;
-  
+
   // Add listeners for all possible submission methods
   form.addEventListener('submit', preventSubmit, true);
-  
+
   // Also prevent Enter key submissions in form inputs
   const inputs = form.querySelectorAll('input, select, textarea');
   inputs.forEach(input => {
@@ -284,7 +305,7 @@ export function preventFormSubmission(): void {
       }
     });
   });
-  
+
   console.log('🚫 Form submission prevention activated');
 }
 
@@ -297,7 +318,7 @@ export function removeFormSubmissionPrevention(): void {
     form.removeEventListener('submit', preventSubmit, true);
     delete (form as any).__aiPreventSubmit;
     form.removeAttribute('data-ai-prevention-active');
-    
+
     // Remove Enter key prevention from inputs
     const inputs = form.querySelectorAll('input, select, textarea');
     inputs.forEach(input => {
@@ -305,7 +326,7 @@ export function removeFormSubmissionPrevention(): void {
       const newInput = input.cloneNode(true);
       input.parentNode?.replaceChild(newInput, input);
     });
-    
+
     console.log('✅ Form submission prevention removed');
   }
 }
@@ -321,7 +342,7 @@ export function disableFormInputs(): void {
     element.style.opacity = '0.5';
     element.style.cursor = 'not-allowed';
   });
-  
+
   console.log('🔒 Form inputs disabled');
 }
 
@@ -336,12 +357,12 @@ export function enableFormInputs(): void {
     element.style.opacity = '';
     element.style.cursor = '';
   });
-  
+
   console.log('🔓 Form inputs enabled');
 }
 
 export function updateGenerationState(
-  generationSelected: boolean, 
+  generationSelected: boolean,
   generationId: string | null = null,
   imageUrl: string | null = null
 ): any {
@@ -377,6 +398,6 @@ export function updateGenerationState(
   }));
 
   console.log('🔄 Generation state updated:', generationState);
-  
+
   return generationState;
-} 
+}

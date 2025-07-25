@@ -162,7 +162,6 @@ export const productBasesTable = sqliteTable('productBases', {
   shopId: text('shopId').notNull().references(() => shopsTable.id, { onDelete: 'cascade' }),
   name: text('name').notNull(), // Display name (e.g., "Ceramic Mug", "Classic T-Shirt")
   description: text('description'), // Optional description
-  basePrice: real('basePrice'), // Optional base pricing
   isActive: integer('isActive', { mode: 'boolean' }).default(true), // 0 = disabled, 1 = active
   sortOrder: integer('sortOrder').default(0), // Display order
   createdAt: text('createdAt').notNull(), // ISO timestamp
@@ -193,7 +192,8 @@ export const productBaseVariantsTable = sqliteTable('productBaseVariants', {
   name: text('name').notNull(), // Variant name (e.g., "White", "S", "12x16")
   widthPx: integer('widthPx').notNull(), // Width in pixels for AI generation
   heightPx: integer('heightPx').notNull(), // Height in pixels for AI generation
-  priceModifier: real('priceModifier').default(0), // Price adjustment (+/- from base price)
+  price: real('price').default(0), // Price adjustment (+/- from base price)
+  compareAtPrice: real('compareAtPrice').default(0), // Price adjustment (+/- from base price)
   isActive: integer('isActive', { mode: 'boolean' }).default(true), // 0 = disabled, 1 = active
   sortOrder: integer('sortOrder').default(0), // Display order within product base
   createdAt: text('createdAt').notNull(), // ISO timestamp

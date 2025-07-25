@@ -1,7 +1,6 @@
-import { type ActionFunctionArgs  } from "@remix-run/node";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { fileTypeFromBuffer } from "file-type";
+import { type ActionFunctionArgs, data } from "@remix-run/node";
 import { authenticate } from "~/shopify.server";
+import { uploadImageFromBase64 } from "~/utils/s3Uploader.server";
 
 // POST /api/upload-image
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -10,67 +9,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const { session } = await authenticate.public.appProxy(request);
     if (!session) {
-      return Response.json({
-        success: false,
-        error: "Unauthorized - Shopify authentication failed",
-        message: "No session returned from authentication"
-      }, { status: 401 });
+      return data(
+        {
+          success: false,
+          error: "Unauthorized - Shopify authentication failed",
+          message: "No session returned from authentication",
+        },
+        { status: 401 },
+      );
     }
     shop = session.shop;
   } catch (error) {
-    return Response.json({
-      success: false,
-      error: "Unauthorized - Shopify authentication failed",
-      message: error instanceof Error ? error.message : "Unknown error"
-    }, { status: 401 });
+    return data(
+      {
+        success: false,
+        error: "Unauthorized - Shopify authentication failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 401 },
+    );
   }
 
   try {
     const { image, filename } = await request.json();
     if (!image || !filename) {
-      return Response.json({ error: "Missing image or filename" }, { status: 400 });
+      return data({ error: "Missing image or filename" }, { status: 400 });
     }
 
-    const s3 = new S3Client({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT!,
-      credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-      },
+    const { url } = await uploadImageFromBase64({
+      shop,
+      filename,
+      base64Image: image,
     });
 
-    const buffer = Buffer.from(image, "base64");
-
-    // Detect MIME type
-    let contentType = "image/png";
-    try {
-      const fileType = await fileTypeFromBuffer(buffer);
-      if (fileType && fileType.mime) {
-        contentType = fileType.mime;
-      }
-    } catch (e) {
-      // fallback to default
-    }
-
-    // Verify it's an image
-    if (!contentType.startsWith("image/")) {
-      return Response.json({ error: "Uploaded file is not a valid image." }, { status: 400 });
-    }
-
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET!,
-        Key: `${shop}/uploads/${filename}`,
-        Body: buffer,
-        ContentType: contentType,
-      })
-    );
-
-    const publicUrl = `${process.env.R2_PUBLIC_URL}/${shop}/uploads/${filename}`;
-    return Response.json({ url: publicUrl });
+    return data({ url });
   } catch (error: any) {
-    console.error("R2 upload error:", error);
-    return Response.json({ error: "Failed to upload image" }, { status: 500 });
+    console.error("Image upload error:", error);
+    return data({ error: error.message || "Failed to upload image" }, { status: 500 });
   }
 };
