@@ -1,4 +1,13 @@
 // Form detection and management utilities
+import { getTranslations } from './i18n';
+
+// Interface for generation state
+interface GenerationState {
+  generationSelected: boolean;
+  generationId: string | null;
+  imageUrl?: string | null;
+  isInitialized?: boolean;
+}
 
 export function findAddToCartButton(): HTMLElement | null {
   // Common selectors for add to cart buttons across themes
@@ -133,7 +142,7 @@ export function generateUUID(): string {
   });
 }
 
-export function addHiddenFields(generationState: any): void {
+export function addHiddenFields(generationState: GenerationState): void {
   const form = findProductForm();
   if (!form) {
     console.log('⚠️ Product form not found for hidden fields');
@@ -193,6 +202,7 @@ export function createButtonsOverlay(): void {
   const existingOverlay = document.getElementById('ai-buttons-overlay');
   if (existingOverlay) existingOverlay.remove();
 
+  const translations = getTranslations();
   const overlay = document.createElement('div');
   overlay.id = 'ai-buttons-overlay';
   overlay.style.cssText = `
@@ -224,7 +234,7 @@ export function createButtonsOverlay(): void {
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       white-space: nowrap;
     ">
-      🎨 Upload and select an image first
+      ${translations.uploadAndSelectImageFirst}
     </div>
   `;
 
@@ -365,7 +375,7 @@ export function updateGenerationState(
   generationSelected: boolean,
   generationId: string | null = null,
   imageUrl: string | null = null
-): any {
+): GenerationState {
   const generationState = {
     generationSelected,
     generationId,

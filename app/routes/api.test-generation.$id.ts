@@ -65,13 +65,10 @@ export const action = async ({ params, request }: ActionFunctionArgs) => {
       input: {
         prompt: finalPrompt,
         image_url: inputImageUrl,
-        num_inference_steps: 28,
         guidance_scale: 3.5,
         num_images: 1,
-        enable_safety_checker: true,
         output_format: "png",
         aspect_ratio: "1:1",
-        strength: 0.85,
       },
     }) as any;
 

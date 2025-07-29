@@ -89,7 +89,6 @@ export const AiStyleSelection = ({aiStyles, selectedStyles, onSelectedStylesChan
                     onDrop={isSelected ? (e) => handleDrop(e, style.uuid) : undefined}
                     style={{ 
                       padding: "8px", 
-                      border: isSelected ? "2px solid #008060" : "1px solid #e1e3e5", 
                       borderRadius: "6px",
                       cursor: isLoading ? "not-allowed" : "pointer",
                       backgroundColor: isSelected ? "#f6f8fa" : "transparent",

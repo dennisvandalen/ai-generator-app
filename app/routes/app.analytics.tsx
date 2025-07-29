@@ -46,7 +46,7 @@ export default function AnalyticsPage() {
                   </Text>
 
                   <Text variant="bodyMd" as="p">
-                    Comprehensive analytics for pet generation reports, revenue, style performance, and customer insights.
+                    Comprehensive analytics for generation reports, revenue, style performance, and customer insights.
                   </Text>
                 </BlockStack>
               </Card>
@@ -56,9 +56,9 @@ export default function AnalyticsPage() {
                 <Layout.Section variant="oneHalf">
                   <Card>
                     <BlockStack gap="200">
-                      <Text as="h3" variant="headingMd" tone="subdued">Pet Generation Reports</Text>
+                      <Text as="h3" variant="headingMd" tone="subdued">Generation Reports</Text>
                       <Text as="p" variant="headingXl">{analytics.totalGenerations}</Text>
-                      <Text as="p" variant="bodyMd">Total pet AI generations</Text>
+                      <Text as="p" variant="bodyMd">Total AI generations</Text>
                     </BlockStack>
                   </Card>
                 </Layout.Section>
@@ -67,7 +67,7 @@ export default function AnalyticsPage() {
                     <BlockStack gap="200">
                       <Text as="h3" variant="headingMd" tone="subdued">Revenue Analytics</Text>
                       <Text as="p" variant="headingXl">${analytics.totalRevenue}</Text>
-                      <Text as="p" variant="bodyMd">Total revenue from AI pet products</Text>
+                      <Text as="p" variant="bodyMd">Total revenue from AI products</Text>
                     </BlockStack>
                   </Card>
                 </Layout.Section>

@@ -37,6 +37,8 @@ export default defineConfig({
     }
   },
   define: {
-    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
+    '__DEBUG_MODE__': JSON.stringify(process.env.NODE_ENV === 'development'),
+    '__DEBUG_FORCE_DISABLE__': JSON.stringify(process.env.AI_DEBUG_DISABLE === 'true')
   }
-}); 
+});

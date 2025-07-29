@@ -3,7 +3,7 @@
 client_id = "dabfce4798337ee21f0a8970fb76757f"
 name = "[DEV] Autopictura"
 handle = "autopictura-dev"
-application_url = "https://drawing-printed-xml-sg.trycloudflare.com"
+application_url = "https://click-ion-locale-anna.trycloudflare.com"
 embedded = true
 
 [build]
@@ -26,10 +26,10 @@ api_version = "2025-07"
 scopes = "read_themes,write_app_proxy,write_orders,write_products"
 
 [auth]
-redirect_urls = ["https://drawing-printed-xml-sg.trycloudflare.com/auth/callback", "https://drawing-printed-xml-sg.trycloudflare.com/auth/shopify/callback", "https://drawing-printed-xml-sg.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://click-ion-locale-anna.trycloudflare.com/auth/callback", "https://click-ion-locale-anna.trycloudflare.com/auth/shopify/callback", "https://click-ion-locale-anna.trycloudflare.com/api/auth/callback"]
 
 [app_proxy]
-url = "https://drawing-printed-xml-sg.trycloudflare.com"
+url = "https://click-ion-locale-anna.trycloudflare.com"
 subpath = "autopictura"
 prefix = "tools"
 

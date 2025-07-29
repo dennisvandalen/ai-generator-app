@@ -22,6 +22,6 @@ export const action = withZodHandler(
             })
             .where(and(eq(aiStylesTable.uuid, id), eq(aiStylesTable.shopId, shopId)));
 
-        return json({success: true});
+        return json({success: true, updated: true});
     }
 );

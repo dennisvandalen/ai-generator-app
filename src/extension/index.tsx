@@ -1,4 +1,3 @@
-import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {AIGeneratorAPI} from './api/client';
 import {isProductPage, getPageType, isThemeEditor} from './utils/pageDetection';
@@ -9,10 +8,53 @@ import {
   createButtonsOverlay,
   addHiddenFields
 } from './utils/formDetection';
+import {isDebugMode, debugLog, debugError} from './utils/debug';
 import {AIPlaceholder} from './components/AIPlaceholder';
 import {DebugPanel} from './components/DebugPanel';
 import {ProductAIGenerator} from './components/ProductAIGenerator';
-import type {ProductStyle} from '../shared/api/productData';
+import type {ProductStyle} from '@shared/api/productData';
+
+// Type definitions
+interface AIConverterData {
+  aiEnabled?: boolean;
+  productId?: string;
+  productTitle?: string;
+  shopDomain?: string;
+  enableForAllPages?: boolean;
+  enableOnCart?: boolean;
+  enableOnCollection?: boolean;
+  lastUpdated?: string;
+}
+
+interface AIGenerationState {
+  generationSelected: boolean;
+  generationId: string | null;
+  isInitialized: boolean;
+}
+
+interface CartItem {
+  key: string;
+  variant_id: number;
+  product_title: string;
+  variant_title: string;
+  properties?: {
+    _ai_generated_image?: string;
+    [key: string]: string | undefined;
+  };
+}
+
+interface CartData {
+  items: CartItem[];
+}
+
+declare global {
+  interface Window {
+    __aiConverterV1?: AIConverterData;
+    __aiGenerationState?: AIGenerationState;
+    aiGeneratorSDK?: AIGeneratorSDK;
+    __testAppProxy?: () => void;
+  }
+}
 
 /**
  * Main AI Generator SDK Class
@@ -21,23 +63,23 @@ import type {ProductStyle} from '../shared/api/productData';
 class AIGeneratorSDK {
   private api: AIGeneratorAPI;
   private isEditor: boolean;
-  private aiConverterData: any;
+  private aiConverterData: AIConverterData;
   private pageType: string;
 
   constructor() {
     this.api = new AIGeneratorAPI();
     this.isEditor = isThemeEditor();
     this.pageType = getPageType();
-    this.aiConverterData = (window as any).__aiConverterV1 || {};
+    this.aiConverterData = window.__aiConverterV1 || {};
 
     // Initialize generation state on window
-    (window as any).__aiGenerationState = {
+    window.__aiGenerationState = {
       generationSelected: false,
       generationId: null,
       isInitialized: false
     };
 
-    console.log('🎨 AI Generator SDK initializing...', {
+    debugLog('🎨 AI Generator SDK initializing...', {
       isEditor: this.isEditor,
       pageType: this.pageType,
       aiConverterData: this.aiConverterData
@@ -61,13 +103,13 @@ class AIGeneratorSDK {
     // Initialize cart drawer watcher on all pages (cart drawer can appear anywhere)
     this.initCartDrawerWatcher();
 
-    // Add debug panel if there's relevant data
-    if (this.aiConverterData.productId || this.pageType === 'product' || this.aiConverterData.enableForAllPages) {
+    // Add debug panel if debug mode is enabled and there's relevant data
+    if (isDebugMode() && (this.aiConverterData.productId || this.pageType === 'product' || this.aiConverterData.enableForAllPages)) {
       this.showDebugPanel();
     }
 
     // Store globally for external access
-    (window as any).aiGeneratorSDK = this;
+    window.aiGeneratorSDK = this;
     window.dispatchEvent(new CustomEvent('aiGeneratorReady', {
       detail: {sdk: this}
     }));
@@ -84,7 +126,7 @@ class AIGeneratorSDK {
   }
 
   async initProductPage() {
-    console.log('🎨 Initializing product page features...');
+    debugLog('🎨 Initializing product page features...');
 
     // Wait a bit for the page to fully load
     setTimeout(() => {
@@ -93,26 +135,30 @@ class AIGeneratorSDK {
       // Only add interactive features on live store
       if (!this.isEditor) {
         // Get current state from window
-        const currentState = (window as any).__aiGenerationState;
+        const currentState = window.__aiGenerationState;
 
-        // Add hidden fields to form
-        addHiddenFields(currentState);
+        // Add hidden fields to form if state exists
+        if (currentState) {
+          addHiddenFields(currentState);
+        }
 
         // Create initial overlay (no generation selected yet)
         createButtonsOverlay();
 
         // Mark as initialized
-        (window as any).__aiGenerationState.isInitialized = true;
+        if (window.__aiGenerationState) {
+          window.__aiGenerationState.isInitialized = true;
+        }
 
-        console.log('✅ AI generation functionality initialized (interactive mode)');
+        debugLog('✅ AI generation functionality initialized (interactive mode)');
       } else {
-        console.log('✅ AI notification displayed (theme editor preview mode)');
+        debugLog('✅ AI notification displayed (theme editor preview mode)');
       }
     }, 500);
   }
 
   async initCartPage() {
-    console.log('🛒 Initializing cart page features...');
+    debugLog('🛒 Initializing cart page features...');
     // Initial update
     this.updateCartImages();
 
@@ -121,11 +167,11 @@ class AIGeneratorSDK {
     // 1. Original cart structure - #main-cart-items
     const cartItemsNode = document.getElementById('main-cart-items');
     if (cartItemsNode) {
-      console.log('✅ Attaching MutationObserver to #main-cart-items');
-      const observer = new MutationObserver((mutationsList) => {
-        for (let mutation of mutationsList) {
+      debugLog('✅ Attaching MutationObserver to #main-cart-items');
+      const observer = new MutationObserver((mutationsList: MutationRecord[]) => {
+        for (const mutation of mutationsList) {
           if (mutation.type === 'childList') {
-            console.log('🛒 MutationObserver: Child list changed in #main-cart-items, triggering image update.');
+            debugLog('🛒 MutationObserver: Child list changed in #main-cart-items, triggering image update.');
             this.updateCartImages();
           }
         }
@@ -133,17 +179,17 @@ class AIGeneratorSDK {
 
       observer.observe(cartItemsNode, {childList: true, subtree: true});
     } else {
-      console.log('⚠️ #main-cart-items not found, looking for alternative cart structures.');
+      debugLog('⚠️ #main-cart-items not found, looking for alternative cart structures.');
     }
 
     // 2. New table-based cart structure - .cart-items__table
     const cartItemsTable = document.querySelector('.cart-items__table');
     if (cartItemsTable) {
-      console.log('✅ Attaching MutationObserver to .cart-items__table');
-      const tableObserver = new MutationObserver((mutationsList) => {
-        for (let mutation of mutationsList) {
+      debugLog('✅ Attaching MutationObserver to .cart-items__table');
+      const tableObserver = new MutationObserver((mutationsList: MutationRecord[]) => {
+        for (const mutation of mutationsList) {
           if (mutation.type === 'childList') {
-            console.log('🛒 MutationObserver: Child list changed in .cart-items__table, triggering image update.');
+            debugLog('🛒 MutationObserver: Child list changed in .cart-items__table, triggering image update.');
             this.updateCartImages();
           }
         }
@@ -155,11 +201,11 @@ class AIGeneratorSDK {
     // 3. General cart form - #cart-form or form.cart-form
     const cartForm = document.getElementById('cart-form') || document.querySelector('form.cart-form');
     if (cartForm) {
-      console.log('✅ Attaching MutationObserver to cart form');
-      const formObserver = new MutationObserver((mutationsList) => {
-        for (let mutation of mutationsList) {
+      debugLog('✅ Attaching MutationObserver to cart form');
+      const formObserver = new MutationObserver((mutationsList: MutationRecord[]) => {
+        for (const mutation of mutationsList) {
           if (mutation.type === 'childList') {
-            console.log('🛒 MutationObserver: Child list changed in cart form, triggering image update.');
+            debugLog('🛒 MutationObserver: Child list changed in cart form, triggering image update.');
             this.updateCartImages();
           }
         }
@@ -172,11 +218,11 @@ class AIGeneratorSDK {
     if (!cartItemsNode && !cartItemsTable && !cartForm) {
       const cartPage = document.querySelector('.cart-page, .page-cart, #cart, [data-cart-wrapper]');
       if (cartPage) {
-        console.log('✅ Attaching MutationObserver to general cart page element as fallback');
-        const pageObserver = new MutationObserver((mutationsList) => {
-          for (let mutation of mutationsList) {
+        debugLog('✅ Attaching MutationObserver to general cart page element as fallback');
+        const pageObserver = new MutationObserver((mutationsList: MutationRecord[]) => {
+          for (const mutation of mutationsList) {
             if (mutation.type === 'childList') {
-              console.log('🛒 MutationObserver: Child list changed in cart page, triggering image update.');
+              debugLog('🛒 MutationObserver: Child list changed in cart page, triggering image update.');
               this.updateCartImages();
             }
           }
@@ -184,22 +230,22 @@ class AIGeneratorSDK {
 
         pageObserver.observe(cartPage, {childList: true, subtree: true});
       } else {
-        console.log('⚠️ No cart elements found for observation. Will rely on initial update only.');
+        debugLog('⚠️ No cart elements found for observation. Will rely on initial update only.');
       }
     }
   }
 
   initCartNotificationWatcher() {
-    console.log('🛒 Initializing cart notification watcher...');
+    debugLog('🛒 Initializing cart notification watcher...');
 
     // Watch for cart notification appearance
-    const observer = new MutationObserver((mutationsList) => {
-      for (let mutation of mutationsList) {
+    const observer = new MutationObserver((mutationsList: MutationRecord[]) => {
+      for (const mutation of mutationsList) {
         if (mutation.type === 'childList') {
           // Check if cart notification was added
           const cartNotification = document.querySelector('#cart-notification');
           if (cartNotification && cartNotification.classList.contains('active')) {
-            console.log('🛒 Cart notification appeared, updating images...');
+            debugLog('🛒 Cart notification appeared, updating images...');
             // Small delay to ensure the notification is fully rendered
             setTimeout(() => this.updateCartImages(), 100);
           }
@@ -213,12 +259,12 @@ class AIGeneratorSDK {
     // Also watch for cart notification visibility changes
     const cartNotification = document.querySelector('#cart-notification');
     if (cartNotification) {
-      const visibilityObserver = new MutationObserver((mutationsList) => {
-        for (let mutation of mutationsList) {
+      const visibilityObserver = new MutationObserver((mutationsList: MutationRecord[]) => {
+        for (const mutation of mutationsList) {
           if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
             const target = mutation.target as HTMLElement;
             if (target.classList.contains('active')) {
-              console.log('🛒 Cart notification became active, updating images...');
+              debugLog('🛒 Cart notification became active, updating images...');
               setTimeout(() => this.updateCartImages(), 100);
             }
           }
@@ -230,16 +276,16 @@ class AIGeneratorSDK {
   }
 
   initCartDrawerWatcher() {
-    console.log('🛒 Initializing cart drawer watcher...');
+    debugLog('🛒 Initializing cart drawer watcher...');
 
     // Watch for cart drawer appearance
-    const observer = new MutationObserver((mutationsList) => {
-      for (let mutation of mutationsList) {
+    const observer = new MutationObserver((mutationsList: MutationRecord[]) => {
+      for (const mutation of mutationsList) {
         if (mutation.type === 'childList') {
           // Check if cart drawer was added or modified
           const cartDrawer = document.querySelector('.cart-drawer-component, .cart-drawer__dialog');
           if (cartDrawer) {
-            console.log('🛒 Cart drawer detected, updating images...');
+            debugLog('🛒 Cart drawer detected, updating images...');
             // Small delay to ensure the drawer is fully rendered
             setTimeout(() => this.updateCartImages(), 100);
           }
@@ -253,17 +299,17 @@ class AIGeneratorSDK {
     // Also watch for cart drawer visibility changes if it already exists
     const cartDrawer = document.querySelector('.cart-drawer-component, .cart-drawer__dialog');
     if (cartDrawer) {
-      console.log('🛒 Cart drawer already exists, setting up visibility observer...');
+      debugLog('🛒 Cart drawer already exists, setting up visibility observer...');
 
-      const visibilityObserver = new MutationObserver((mutationsList) => {
-        for (let mutation of mutationsList) {
+      const visibilityObserver = new MutationObserver((mutationsList: MutationRecord[]) => {
+        for (const mutation of mutationsList) {
           // Check for attribute changes (like open/closed state)
           if (mutation.type === 'attributes') {
             const target = mutation.target as HTMLElement;
 
             // For dialog elements, check the 'open' attribute
             if (target.tagName === 'DIALOG' && target.hasAttribute('open')) {
-              console.log('🛒 Cart drawer dialog opened, updating images...');
+              debugLog('🛒 Cart drawer dialog opened, updating images...');
               setTimeout(() => this.updateCartImages(), 100);
             }
 
@@ -273,7 +319,7 @@ class AIGeneratorSDK {
               if (target.classList.contains('active') ||
                   target.classList.contains('open') ||
                   target.classList.contains('visible')) {
-                console.log('🛒 Cart drawer became visible, updating images...');
+                debugLog('🛒 Cart drawer became visible, updating images...');
                 setTimeout(() => this.updateCartImages(), 100);
               }
             }
@@ -291,9 +337,9 @@ class AIGeneratorSDK {
       // Also observe the cart drawer content specifically
       const cartDrawerContent = cartDrawer.querySelector('.cart-drawer__content, .cart-items__table');
       if (cartDrawerContent) {
-        console.log('🛒 Setting up observer for cart drawer content...');
-        const contentObserver = new MutationObserver(() => {
-          console.log('🛒 Cart drawer content changed, updating images...');
+        debugLog('🛒 Setting up observer for cart drawer content...');
+        const contentObserver = new MutationObserver((_mutationsList: MutationRecord[]) => {
+          debugLog('🛒 Cart drawer content changed, updating images...');
           setTimeout(() => this.updateCartImages(), 100);
         });
 
@@ -305,12 +351,12 @@ class AIGeneratorSDK {
     }
   }
 
-  async updateCartImages(cart = null) {
+  async updateCartImages(cart: CartData | null = null) {
     try {
-      const cartData = cart || await (await fetch('/cart.js')).json();
-      console.log('🛒 updateCartImages: Received cart data:', cartData);
+      const cartData: CartData = cart || await (await fetch('/cart.js')).json();
+      debugLog('🛒 updateCartImages: Received cart data:', cartData);
       if (!cartData || !cartData.items) {
-        console.log('🛒 updateCartImages: No cart data or items found.');
+        debugLog('🛒 updateCartImages: No cart data or items found.');
         return;
       }
 
@@ -318,11 +364,11 @@ class AIGeneratorSDK {
       this.updateCartNotificationImage(cartData);
 
       // Filter items that have AI-generated images
-      const aiGeneratedItems = cartData.items.filter((item: any) =>
+      const aiGeneratedItems = cartData.items.filter((item: CartItem) =>
         item.properties && item.properties._ai_generated_image
       );
 
-      console.log('🛒 updateCartImages: Found', aiGeneratedItems.length, 'items with AI-generated images out of', cartData.items.length, 'total items');
+      debugLog('🛒 updateCartImages: Found', aiGeneratedItems.length, 'items with AI-generated images out of', cartData.items.length, 'total items');
 
       // REVERSED APPROACH: Loop through HTML elements first, then match with cart data
 
@@ -335,20 +381,20 @@ class AIGeneratorSDK {
           const href = productLink.getAttribute('href');
           if (href) {
             // Try to find a matching item in the cart data
-            const matchingItem = cartData.items.find((item: any) =>
+            const matchingItem = cartData.items.find((item: CartItem) =>
               href.includes(item.key) && item.properties && item.properties._ai_generated_image
             );
 
-            if (matchingItem) {
+            if (matchingItem && matchingItem.properties?._ai_generated_image) {
               const aiImageUrl = matchingItem.properties._ai_generated_image;
-              console.log('🛒 updateCartImages: Found matching item for row with href:', href, 'item key:', matchingItem.key);
+              debugLog('🛒 updateCartImages: Found matching item for row with href:', href, 'item key:', matchingItem.key);
 
               // Update the image
               const imgElement = row.querySelector('.cart-item__image') as HTMLImageElement;
               if (imgElement) {
-                console.log('🛒 updateCartImages: Found image element within row, updating to:', aiImageUrl);
+                debugLog('🛒 updateCartImages: Found image element within row, updating to:', aiImageUrl);
                 imgElement.setAttribute('src', aiImageUrl);
-                console.log('🛒 updateCartImages: Main cart image src updated for item', matchingItem.key, 'to:', aiImageUrl);
+                debugLog('🛒 updateCartImages: Main cart image src updated for item', matchingItem.key, 'to:', aiImageUrl);
               }
             }
           }
@@ -361,7 +407,7 @@ class AIGeneratorSDK {
         // Find all product links in this row
         const links = row.querySelectorAll('a[href*="/products/"]');
         if (links.length === 0) {
-          console.log('🛒 updateCartImages: No product links found in row', index);
+          debugLog('🛒 updateCartImages: No product links found in row', index);
           return;
         }
 
@@ -369,14 +415,14 @@ class AIGeneratorSDK {
         let matchingItem = null;
 
         // Method 1: Try to match by exact key in the URL
-        for (const link of links) {
+        for (const link of Array.from(links)) {
           const href = link.getAttribute('href');
           if (href) {
             // Check each AI-generated item to see if its key is in the URL
             for (const item of aiGeneratedItems) {
               if (href.includes(item.key)) {
                 matchingItem = item;
-                console.log('🛒 updateCartImages: Found exact key match in link:', href, 'for item key:', item.key);
+                debugLog('🛒 updateCartImages: Found exact key match in link:', href, 'for item key:', item.key);
                 break;
               }
             }
@@ -387,7 +433,7 @@ class AIGeneratorSDK {
 
         // Method 2: If no exact match found, try to match by variant ID
         if (!matchingItem) {
-          for (const link of links) {
+          for (const link of Array.from(links)) {
             const href = link.getAttribute('href');
             if (href) {
               // Extract variant ID from URL (usually in the format /products/product-handle?variant=12345)
@@ -396,13 +442,13 @@ class AIGeneratorSDK {
                 const variantId = variantMatch[1];
 
                 // Find matching item by variant ID
-                const matchingItemByVariant = aiGeneratedItems.find((item: any) =>
+                const matchingItemByVariant = aiGeneratedItems.find((item: CartItem) =>
                   item.variant_id.toString() === variantId
                 );
 
                 if (matchingItemByVariant) {
                   matchingItem = matchingItemByVariant;
-                  console.log('🛒 updateCartImages: Found variant ID match in link:', href, 'for item variant ID:', variantId);
+                  debugLog('🛒 updateCartImages: Found variant ID match in link:', href, 'for item variant ID:', variantId);
                   break;
                 }
               }
@@ -411,9 +457,9 @@ class AIGeneratorSDK {
         }
 
         // If we found a matching item, update the image
-        if (matchingItem) {
+        if (matchingItem && matchingItem.properties?._ai_generated_image) {
           const aiImageUrl = matchingItem.properties._ai_generated_image;
-          console.log('🛒 updateCartImages: Found matching item for row', index, 'item key:', matchingItem.key);
+          debugLog('🛒 updateCartImages: Found matching item for row', index, 'item key:', matchingItem.key);
 
           // Find the image in the media cell
           const mediaCell = row.querySelector('.cart-items__media');
@@ -421,7 +467,7 @@ class AIGeneratorSDK {
             // Standard image element
             const imgElement = mediaCell.querySelector('img') as HTMLImageElement;
             if (imgElement) {
-              console.log('🛒 updateCartImages: Found image element within table row, updating to:', aiImageUrl);
+              debugLog('🛒 updateCartImages: Found image element within table row, updating to:', aiImageUrl);
               imgElement.setAttribute('src', aiImageUrl);
 
               // Also update the srcset if it exists
@@ -429,15 +475,15 @@ class AIGeneratorSDK {
                 imgElement.setAttribute('srcset', `${aiImageUrl} 250w`);
               }
 
-              console.log('🛒 updateCartImages: Cart table image src updated for item', matchingItem.key, 'to:', aiImageUrl);
+              debugLog('🛒 updateCartImages: Cart table image src updated for item', matchingItem.key, 'to:', aiImageUrl);
             } else {
-              console.log('🛒 updateCartImages: Could not find image element within table row');
+              debugLog('🛒 updateCartImages: Could not find image element within table row');
             }
           } else {
-            console.log('🛒 updateCartImages: Could not find media cell within table row');
+            debugLog('🛒 updateCartImages: Could not find media cell within table row');
           }
         } else {
-          console.log('🛒 updateCartImages: No matching AI-generated item found for row', index);
+          debugLog('🛒 updateCartImages: No matching AI-generated item found for row', index);
         }
       });
 
@@ -451,7 +497,7 @@ class AIGeneratorSDK {
         // Try to find a matching item in the cart data
         let matchingItem = null;
 
-        for (const link of links) {
+        for (const link of Array.from(links)) {
           const href = link.getAttribute('href');
           if (href) {
             // Check each AI-generated item to see if its key is in the URL
@@ -467,13 +513,13 @@ class AIGeneratorSDK {
         }
 
         // If we found a matching item, update the image
-        if (matchingItem) {
+        if (matchingItem && matchingItem.properties?._ai_generated_image) {
           const aiImageUrl = matchingItem.properties._ai_generated_image;
 
           // Find and update all images in this container
           const images = container.querySelectorAll('img[src*="cdn/shop"], img[src*="myshopify"]') as NodeListOf<HTMLImageElement>;
           images.forEach((img) => {
-            console.log('🛒 updateCartImages: Found additional cart image for item key:', matchingItem.key, img);
+            debugLog('🛒 updateCartImages: Found additional cart image for item key:', matchingItem.key, img);
             img.setAttribute('src', aiImageUrl);
 
             // Also update the srcset if it exists
@@ -481,72 +527,77 @@ class AIGeneratorSDK {
               img.setAttribute('srcset', `${aiImageUrl} 250w`);
             }
 
-            console.log('🛒 updateCartImages: Additional cart image src updated for item', matchingItem.key, 'to:', aiImageUrl);
+            debugLog('🛒 updateCartImages: Additional cart image src updated for item', matchingItem.key, 'to:', aiImageUrl);
           });
         }
       });
 
     } catch (error) {
-      console.error('Error updating cart images:', error);
+      debugError('Error updating cart images:', error);
     }
   }
 
-  updateCartNotificationImage(cartData: any) {
-    console.log('🛒 updateCartNotificationImage: Processing cart notification...');
+  updateCartNotificationImage(cartData: CartData) {
+    debugLog('🛒 updateCartNotificationImage: Processing cart notification...');
 
     const cartNotificationProduct = document.querySelector('#cart-notification-product') as HTMLElement;
     if (!cartNotificationProduct) {
-      console.log('🛒 updateCartNotificationImage: No cart notification product found.');
+      debugLog('🛒 updateCartNotificationImage: No cart notification product found.');
       return;
     }
 
     // Try to identify which item the cart notification is showing
     // Method 1: Check the product name in the notification
     const notificationProductName = cartNotificationProduct.querySelector('.cart-notification-product__name')?.textContent?.trim();
-    console.log('🛒 updateCartNotificationImage: Notification product name:', notificationProductName);
+    debugLog('🛒 updateCartNotificationImage: Notification product name:', notificationProductName);
 
     // Method 2: Check if there's a specific item key or variant ID in the notification
     const notificationImgElement = cartNotificationProduct.querySelector('img') as HTMLImageElement;
     if (!notificationImgElement) {
-      console.log('🛒 updateCartNotificationImage: No notification image element found.');
+      debugLog('🛒 updateCartNotificationImage: No notification image element found.');
       return;
     }
 
     // Find the most recently added item with AI generation
     // Cart notifications typically show the most recently added item
-    const aiGeneratedItems = cartData.items.filter((item: any) =>
+    const aiGeneratedItems = cartData.items.filter((item: CartItem) =>
       item.properties && item.properties._ai_generated_image
     );
 
     if (aiGeneratedItems.length === 0) {
-      console.log('🛒 updateCartNotificationImage: No AI generated items found in cart.');
+      debugLog('🛒 updateCartNotificationImage: No AI generated items found in cart.');
       return;
     }
 
     // Get the most recent AI generated item (last in the array)
     const mostRecentAiItem = aiGeneratedItems[aiGeneratedItems.length - 1];
-    const aiImageUrl = mostRecentAiItem.properties._ai_generated_image;
+    const aiImageUrl = mostRecentAiItem.properties?._ai_generated_image;
 
-    console.log('🛒 updateCartNotificationImage: Most recent AI item:', mostRecentAiItem.key, 'with image:', aiImageUrl);
+    if (!aiImageUrl) {
+      debugLog('🛒 updateCartNotificationImage: No AI image URL found for most recent item.');
+      return;
+    }
+
+    debugLog('🛒 updateCartNotificationImage: Most recent AI item:', mostRecentAiItem.key, 'with image:', aiImageUrl);
 
     // Update the notification image
     notificationImgElement.setAttribute('src', aiImageUrl);
-    console.log('🛒 updateCartNotificationImage: Cart notification image updated to:', aiImageUrl);
+    debugLog('🛒 updateCartNotificationImage: Cart notification image updated to:', aiImageUrl);
 
     // Additional check: If the notification product name matches a specific item, use that instead
     if (notificationProductName) {
-      const matchingItem = cartData.items.find((item: any) => {
+      const matchingItem = cartData.items.find((item: CartItem) => {
         // Try to match by product title or variant title
         const itemTitle = item.product_title || item.variant_title || '';
         return itemTitle.toLowerCase().includes(notificationProductName.toLowerCase()) ||
           notificationProductName.toLowerCase().includes(itemTitle.toLowerCase());
       });
 
-      if (matchingItem && matchingItem.properties && matchingItem.properties._ai_generated_image) {
+      if (matchingItem?.properties?._ai_generated_image) {
         const matchingAiImageUrl = matchingItem.properties._ai_generated_image;
-        console.log('🛒 updateCartNotificationImage: Found matching item by name:', matchingItem.key, 'with image:', matchingAiImageUrl);
+        debugLog('🛒 updateCartNotificationImage: Found matching item by name:', matchingItem.key, 'with image:', matchingAiImageUrl);
         notificationImgElement.setAttribute('src', matchingAiImageUrl);
-        console.log('🛒 updateCartNotificationImage: Cart notification image updated to matching item:', matchingAiImageUrl);
+        debugLog('🛒 updateCartNotificationImage: Cart notification image updated to matching item:', matchingAiImageUrl);
       }
     }
   }
@@ -554,13 +605,13 @@ class AIGeneratorSDK {
   injectAIPlaceholder() {
     // Don't inject if already exists
     if (document.getElementById('ai-generator-placeholder-react')) {
-      console.log('AI customizer already injected, skipping.');
+      debugLog('AI customizer already injected, skipping.');
       return;
     }
 
     // Try to find the Quantity section first
     const quantitySection = document.querySelector('[id^="Quantity-Form-"]');
-    console.log('Quantity section found:', !!quantitySection, quantitySection);
+    debugLog('Quantity section found:', !!quantitySection, quantitySection);
 
     let insertBeforeElem = quantitySection;
     let insertLocation = 'Quantity section';
@@ -568,9 +619,9 @@ class AIGeneratorSDK {
     // If not found, fallback to product form
     if (!quantitySection) {
       const productForm = findProductForm();
-      console.log('Product form found:', !!productForm, productForm);
+      debugLog('Product form found:', !!productForm, productForm);
       if (!productForm) {
-        console.log('⚠️ Quantity section and product form not found');
+        debugLog('⚠️ Quantity section and product form not found');
         return;
       }
       insertBeforeElem = productForm;
@@ -583,14 +634,14 @@ class AIGeneratorSDK {
 
     // Insert before the chosen element
     if (!insertBeforeElem) {
-      console.warn('⚠️ Insert target element is null, cannot inject AI customizer');
+      debugLog('⚠️ Insert target element is null, cannot inject AI customizer');
       return;
     }
-    console.log('Inserting AI customizer before:', insertBeforeElem);
+    debugLog('Inserting AI customizer before:', insertBeforeElem);
     insertBeforeElem.parentNode?.insertBefore(container, insertBeforeElem);
 
     // Get productId and shop from window metafield if available
-    const aiConverterData = (window as any).__aiConverterV1 || {};
+    const aiConverterData = window.__aiConverterV1 || {};
     const productId = aiConverterData.productId;
     const shop = aiConverterData.shopDomain;
 
@@ -605,16 +656,16 @@ class AIGeneratorSDK {
             shop={shop}
           />
         )}
-        {this.pageType === 'product' && (
+        {this.pageType === 'product' && productId && !this.isEditor && (
           <ProductAIGenerator
             productId={productId}
             shop={shop}
             onGenerationStart={(style: ProductStyle, selectedImageUrl: string) => {
               // You can add logic here to handle when generation starts
-              console.log('AI Generation started with style:', style, 'and size:', selectedImageUrl);
+              debugLog('AI Generation started with style:', style, 'and size:', selectedImageUrl);
             }}
             onError={(error: unknown) => {
-              console.error('AI Generator error:', error);
+              debugError('AI Generator error:', error);
             }}
             onUpdateGenerationState={(generationSelected, generationId, imageUrl) =>
               updateGenerationState(generationSelected, generationId, imageUrl)
@@ -625,7 +676,7 @@ class AIGeneratorSDK {
     );
 
     const mode = this.isEditor ? 'theme editor notification' : 'interactive widget';
-    console.log(`✅ AI React ${mode} injected above ${insertLocation}`);
+    debugLog(`✅ AI React ${mode} injected above ${insertLocation}`);
   }
 
   showDebugPanel() {
@@ -646,17 +697,18 @@ class AIGeneratorSDK {
   }
 
   handleGenerationToggle() {
-    const currentState = (window as any).__aiGenerationState;
+    const currentState = window.__aiGenerationState;
+    if (!currentState) return;
 
     if (currentState.generationSelected) {
       // Reset state (change generation)
       updateGenerationState(false, null);
-      console.log('🔄 Generation reset - user can select new style');
+      debugLog('🔄 Generation reset - user can select new style');
     } else {
       // Simulate generation selection
       const fakeGenerationId = generateUUID();
       updateGenerationState(true, fakeGenerationId);
-      console.log('🎨 Fake generation selected:', fakeGenerationId);
+      debugLog('🎨 Fake generation selected:', fakeGenerationId);
     }
 
     // No need to manually re-render - components will detect the window state change
@@ -664,51 +716,51 @@ class AIGeneratorSDK {
 
   testAppProxy() {
     // Test app proxy connection (debug utility)
-    (window as any).__testAppProxy = () => {
+    window.__testAppProxy = () => {
       const tests = [
         '/tools/autopictura/api/test-proxy',
       ];
 
       tests.forEach((url, index) => {
         const testName = ['test-proxy'][index];
-        console.log(`Testing ${testName} at:`, url);
+        debugLog(`Testing ${testName} at:`, url);
 
         fetch(url)
           .then(res => res.json())
           .then(data => {
-            console.log(`${testName} result:`, data);
+            debugLog(`${testName} result:`, data);
             (window as any)[`__${testName.replace('-', '')}Result`] = data;
           })
           .catch(err => {
-            console.error(`${testName} failed:`, err);
+            debugError(`${testName} failed:`, err);
             (window as any)[`__${testName.replace('-', '')}Result`] = {error: err.message};
           });
       });
     };
 
     // Auto-test proxy on load
-    setTimeout(() => (window as any).__testAppProxy(), 1000);
+    setTimeout(() => window.__testAppProxy?.(), 1000);
   }
 
   logInitializationStatus() {
-    console.log('=== AI Generator Debug Info ===');
-    console.log('Theme Editor Mode:', this.isEditor);
-    console.log('Product ID:', this.aiConverterData.productId);
-    console.log('Product Title:', this.aiConverterData.productTitle);
-    console.log('AI Enabled:', this.aiConverterData.aiEnabled);
-    console.log('Page Type:', this.pageType);
-    console.log('Full Data:', this.aiConverterData);
+    debugLog('=== AI Generator Debug Info ===');
+    debugLog('Theme Editor Mode:', this.isEditor);
+    debugLog('Product ID:', this.aiConverterData.productId);
+    debugLog('Product Title:', this.aiConverterData.productTitle);
+    debugLog('AI Enabled:', this.aiConverterData.aiEnabled);
+    debugLog('Page Type:', this.pageType);
+    debugLog('Full Data:', this.aiConverterData);
 
     const shouldShowAI = this.shouldShowAI() && isProductPage();
 
     if (shouldShowAI) {
       if (this.isEditor && !this.aiConverterData.aiEnabled) {
-        console.log('%c🎨 AI GENERATION ENABLED (THEME EDITOR DEMO) 🎨', 'color: #ffa500; font-size: 16px; font-weight: bold;');
+        debugLog('%c🎨 AI GENERATION ENABLED (THEME EDITOR DEMO) 🎨', 'color: #ffa500; font-size: 16px; font-weight: bold;');
       } else {
-        console.log('%c🎨 AI GENERATION ENABLED FOR THIS PRODUCT! 🎨', 'color: #00ff88; font-size: 16px; font-weight: bold;');
+        debugLog('%c🎨 AI GENERATION ENABLED FOR THIS PRODUCT! 🎨', 'color: #00ff88; font-size: 16px; font-weight: bold;');
       }
     } else if (this.aiConverterData.aiEnabled === false && isProductPage()) {
-      console.log('%c❌ AI Generation is DISABLED for this product', 'color: #ff4757; font-size: 14px; font-weight: bold;');
+      debugLog('%c❌ AI Generation is DISABLED for this product', 'color: #ff4757; font-size: 14px; font-weight: bold;');
     }
   }
 
@@ -717,18 +769,18 @@ class AIGeneratorSDK {
     return this.api.getProductStyles(productId);
   }
 
-  async createGeneration(generationData: any) {
+  async createGeneration(generationData: unknown) {
     return this.api.createGeneration(generationData);
   }
 }
 
 // Auto-initialize
-function initializeSDK() {
-  if ((window as any).__aiConverterV1) {
+function initializeSDK(): void {
+  if (window.__aiConverterV1) {
     const sdk = new AIGeneratorSDK();
-    sdk.init().catch(console.error);
+    sdk.init().catch(debugError);
   } else {
-    console.log('⚠️ AI Generator SDK: No metafield data found, skipping initialization');
+    debugLog('⚠️ AI Generator SDK: No metafield data found, skipping initialization');
   }
 }
 
@@ -741,21 +793,5 @@ if (typeof window !== 'undefined') {
   }
 }
 
-// Type declarations for global objects
-declare global {
-  interface Window {
-    __aiConverterV1?: {
-      aiEnabled?: boolean;
-      productId?: string;
-      productTitle?: string;
-      shopDomain?: string;
-      enableForAllPages?: boolean;
-      enableOnCart?: boolean;
-      enableOnCollection?: boolean;
-      lastUpdated?: string;
-    };
-    aiGeneratorSDK?: AIGeneratorSDK;
-  }
-}
 
 export {AIGeneratorSDK};

@@ -50,7 +50,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   let sortField = 'isEnabled';
   let sortDirection = 'desc';
-  let statusFilter = null;
 
   // Check if this is a form submission (from fetcher)
   if (request.method === 'GET' && request.headers.get('Content-Type')?.includes('multipart/form-data')) {
@@ -60,30 +59,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     if (action === 'updateSort') {
       sortField = formData.get('sortField')?.toString() || 'isEnabled';
       sortDirection = formData.get('sortDirection')?.toString() || 'desc';
-      // Preserve existing filter if any
-      statusFilter = url.searchParams.get('status');
-    } else if (action === 'updateFilter') {
-      statusFilter = formData.get('status')?.toString() || null;
-      // Preserve existing sort if any
-      sortField = url.searchParams.get('sortField') || 'isEnabled';
-      sortDirection = url.searchParams.get('sortDirection') || 'desc';
     }
   } else {
     // Get parameters from URL for regular page loads
     sortField = url.searchParams.get('sortField') || 'isEnabled';
     sortDirection = url.searchParams.get('sortDirection') || 'desc';
-    statusFilter = url.searchParams.get('status');
   }
 
   // Build query with all conditions in a single where clause
-  let whereConditions = [eq(productsTable.shopId, session.shop)];
-
-  // Apply status filter if provided
-  if (statusFilter === 'enabled') {
-    whereConditions.push(eq(productsTable.isEnabled, true));
-  } else if (statusFilter === 'disabled') {
-    whereConditions.push(eq(productsTable.isEnabled, false));
-  }
+  const whereConditions = [eq(productsTable.shopId, session.shop)];
 
   // Determine sort column and direction
   let sortColumn;
@@ -110,8 +94,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return Response.json({
     shop: session.shop,
     products,
-    currentSort: { field: sortField, direction: sortDirection },
-    currentFilter: statusFilter || 'all',
+    currentSort: { field: sortField, direction: sortDirection }
   });
 };
 
@@ -177,31 +160,24 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
 };
 
 export default function ProductsIndexPage() {
-  const { products, currentSort, currentFilter } = useLoaderData<typeof loader>();
+  const { products, currentSort } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<ActionData>();
   const sortFetcher = useFetcher();
   const navigate = useNavigate();
   const location = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Update URL when sort/filter changes without affecting scroll position
+  // Update URL when sort changes without affecting scroll position
   useEffect(() => {
     if (sortFetcher.state === 'idle' && sortFetcher.data) {
       const data = sortFetcher.data as any;
-      if (data.currentSort || data.currentFilter) {
+      if (data.currentSort) {
         const params = new URLSearchParams(location.search);
 
         // Update sort parameters if they exist in the fetcher data
         if (data.currentSort) {
           params.set('sortField', data.currentSort.field);
           params.set('sortDirection', data.currentSort.direction);
-        }
-
-        // Update filter parameter if it exists in the fetcher data
-        if (data.currentFilter && data.currentFilter !== 'all') {
-          params.set('status', data.currentFilter);
-        } else if (data.currentFilter === 'all') {
-          params.delete('status');
         }
 
         // Update URL without affecting scroll position
@@ -223,15 +199,6 @@ export default function ProductsIndexPage() {
     sortFetcher.submit(formData, { method: 'get' });
   }, [sortFetcher]);
 
-  // Handle filter change
-  const handleFilterChange = useCallback((value: string) => {
-    const formData = new FormData();
-    formData.append('_action', 'updateFilter');
-    if (value !== 'all') {
-      formData.append('status', value);
-    }
-    sortFetcher.submit(formData, { method: 'get' });
-  }, [sortFetcher]);
 
   const handleProductClick = useCallback((productUuid: string) => {
     navigate(`/app/products/${productUuid}`);
@@ -360,7 +327,7 @@ export default function ProductsIndexPage() {
       heading="No AI-enabled products yet"
       image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
     >
-      <p>Start by enabling products for AI pet generation. Customers will be able to upload pet photos and customize these products with AI-generated pet artwork.</p>
+      <p>Start by enabling products for AI generation. Customers will be able to upload photos and customize these products with AI-generated artwork.</p>
       <Button onClick={handleProductSelection} variant="primary">
         Select Product from Store
       </Button>
@@ -383,8 +350,8 @@ export default function ProductsIndexPage() {
                 </InlineStack>
 
                 <Text variant="bodyMd" as="p">
-                  Manage which products customers can customize with AI-generated pet artwork.
-                  Enable products to allow customers to upload pet photos and select AI styles.
+                  Manage which products customers can customize with AI-generated artwork.
+                  Enable products to allow customers to upload photos and select AI styles.
                 </Text>
 
                 <BlockStack gap="300">
@@ -401,7 +368,7 @@ export default function ProductsIndexPage() {
                               Create New Product
                             </Text>
                             <Text variant="bodySm" tone="subdued" as="p">
-                              Create a brand new product specifically designed for AI pet customization.
+                              Create a brand new product specifically designed for AI customization.
                             </Text>
                           </BlockStack>
                           <Button
@@ -427,7 +394,7 @@ export default function ProductsIndexPage() {
                               Select Existing Product
                             </Text>
                             <Text variant="bodySm" tone="subdued" as="p">
-                              Choose from products already in your store to enable for AI pet generation.
+                              Choose from products already in your store to enable for AI generation.
                             </Text>
                           </BlockStack>
                           <Button
@@ -477,17 +444,6 @@ export default function ProductsIndexPage() {
                       ]}
                       value={`${currentSort.field}-${currentSort.direction}`}
                       onChange={handleSortChange}
-                    />
-                    <ChoiceList
-                      title="Filter by status"
-                      titleHidden
-                      choices={[
-                        { label: 'All products', value: 'all' },
-                        { label: 'Enabled only', value: 'enabled' },
-                        { label: 'Disabled only', value: 'disabled' },
-                      ]}
-                      selected={[currentFilter]}
-                      onChange={(selected) => handleFilterChange(selected[0])}
                     />
                   </InlineStack>
                 </BlockStack>

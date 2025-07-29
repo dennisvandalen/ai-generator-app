@@ -1,7 +1,7 @@
 import {useEffect} from "react";
-import { boundary } from "@shopify/shopify-app-remix/server";
-import type {ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction } from "@remix-run/node";
-import {useFetcher, useLoaderData} from "@remix-run/react";
+import {boundary} from "@shopify/shopify-app-remix/server";
+import type {ActionFunctionArgs, LoaderFunctionArgs, HeadersFunction} from "@remix-run/node";
+import {useFetcher, useLoaderData, useRevalidator} from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -20,33 +20,47 @@ import drizzleDb from "../db.server";
 import {generationsTable} from "~/db/schema";
 import {eq, desc, and, gte} from "drizzle-orm";
 import {Onboarding} from "~/components/Onboarding";
+import {
+  verifyThemeExtension,
+  createThemeEditorDeeplink,
+} from "~/utils/ThemeExtensionHelper";
 
-const DEBUG_REQUESTS = process.env.DEBUG_REQUESTS === 'true' || process.env.NODE_ENV === 'development';
+// const DEBUG_REQUESTS = process.env.DEBUG_REQUESTS === 'true' || process.env.NODE_ENV === 'development';
 
 export const loader = async ({request}: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
-  if (DEBUG_REQUESTS) {
-    console.log(`[APP_INDEX] Loading dashboard: ${url.pathname} | URL: ${request.url}`);
-
-    // Log request details before authentication
-    const shopParam = url.searchParams.get('shop');
-    console.log(`[APP_INDEX] Shop from URL params: ${shopParam}`);
-    console.log(`[APP_INDEX] Headers:`, Object.fromEntries(request.headers.entries()));
-  }
+  // if (DEBUG_REQUESTS) {
+  //   console.log(`[APP_INDEX] Loading dashboard: ${url.pathname} | URL: ${request.url}`);
+  //
+  //   // Log request details before authentication
+  //   const shopParam = url.searchParams.get('shop');
+  //   console.log(`[APP_INDEX] Shop from URL params: ${shopParam}`);
+  //   console.log(`[APP_INDEX] Headers:`, Object.fromEntries(request.headers.entries()));
+  // }
 
   const {admin, session} = await authenticate.admin(request);
 
-  if (DEBUG_REQUESTS) {
-    // Log session details after authentication
-    console.log(`[APP_INDEX] Session shop: ${session?.shop || 'null'}`);
-    console.log(`[APP_INDEX] Session details:`, {
-      id: session?.id,
-      shop: session?.shop,
-      isOnline: session?.isOnline,
-      expires: session?.expires,
-    });
-  }
+  // if (DEBUG_REQUESTS) {
+  //   // Log session details after authentication
+  //   console.log(`[APP_INDEX] Session shop: ${session?.shop || 'null'}`);
+  //   console.log(`[APP_INDEX] Session details:`, {
+  //     id: session?.id,
+  //     shop: session?.shop,
+  //     isOnline: session?.isOnline,
+  //     expires: session?.expires,
+  //   });
+  // }
+
+  // Check theme extension status
+  const status = await verifyThemeExtension({
+    shop: session.shop,
+    accessToken: session.accessToken!,
+    appKey: process.env.SHOPIFY_API_KEY || '',
+    themeId: 'current',
+    appBlockType: 'block',
+  });
+
 
   // Get start of current month for filtering
   const now = new Date();
@@ -117,11 +131,25 @@ export const loader = async ({request}: LoaderFunctionArgs) => {
   const responseJson = await response.json();
   const products = responseJson.data?.products?.edges || [];
 
+  // Create deeplink for app embed activation
+  const appEmbedDeeplink = createThemeEditorDeeplink({
+    shop: session.shop,
+    appKey: process.env.SHOPIFY_API_KEY || '',
+    template: 'product',
+    themeId: 'current',
+    additionalParams: {
+      context: 'apps',
+      appEmbed: `${process.env.SHOPIFY_API_KEY}/block`,
+    }
+  });
+
   return {
     products,
     shop: session.shop,
     generations,
     analyticsData,
+    themeExtensionStatus: status,
+    appEmbedDeeplink: appEmbedDeeplink.success ? appEmbedDeeplink.url : null,
   };
 };
 
@@ -195,14 +223,14 @@ export const action = async ({request}: ActionFunctionArgs) => {
 
   return {
     product: responseJson!.data!.productCreate!.product,
-    variant:
-    variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
+    variant: variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
   };
 };
 
 export default function Index() {
-  const {analyticsData} = useLoaderData<typeof loader>();
+  const {analyticsData, themeExtensionStatus, appEmbedDeeplink} = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
+  const revalidator = useRevalidator();
 
   const shopify = useAppBridge();
   const fetcherData = fetcher.data as any;
@@ -229,7 +257,10 @@ export default function Index() {
           <Layout.Section>
             <BlockStack gap="500">
 
-              <Onboarding/>
+              <Onboarding
+                themeExtensionStatus={themeExtensionStatus}
+                appEmbedDeeplink={appEmbedDeeplink}
+              />
 
               <Card>
                 <BlockStack gap="200">
@@ -237,11 +268,11 @@ export default function Index() {
                     Welcome to {APP_NAME}
                   </Text>
                   <Text variant="bodyMd" as="p">
-                    Create beautiful, custom posters of your pets using the power of AI. Enable products for pet
+                    Create beautiful, custom posters using the power of AI. Enable products for
                     customization, manage AI styles, and track generation orders.
                   </Text>
                   <Text variant="bodyMd" as="p">
-                    Get started by enabling products for AI pet generation and creating style collections for your
+                    Get started by enabling products for AI generation and creating style collections for your
                     customers to choose from.
                   </Text>
                   <Button variant="primary" url="/app/products">
@@ -249,6 +280,7 @@ export default function Index() {
                   </Button>
                 </BlockStack>
               </Card>
+
 
               {/* Analytics Overview Card */}
               <Card>

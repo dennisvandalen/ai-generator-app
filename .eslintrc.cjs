@@ -69,7 +69,11 @@ module.exports = {
 
     // Node
     {
-      files: ['.eslintrc.cjs'],
+      files: [
+        '.eslintrc.cjs',
+        'vite.extension.config.js',
+        'vite.config.js',
+      ],
       env: {
         node: true,
       },

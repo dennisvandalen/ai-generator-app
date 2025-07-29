@@ -177,7 +177,7 @@ export default function EditStylePage() {
         shopify?.toast.show(formFetcher.data.error, { isError: true });
       }
     }
-  }, [formFetcher.state, formFetcher.data, shopify, reset, formData, form]);
+  }, [formFetcher.state, formFetcher.data, shopify, reset, form]);
 
   const handleDelete = useCallback(() => {
     const data = { _action: "delete-style", id: aiStyle.uuid };

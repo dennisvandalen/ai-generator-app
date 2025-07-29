@@ -5,7 +5,7 @@ import Cropper from 'react-easy-crop';
 import 'react-easy-crop/react-easy-crop.css';
 import ReactDOM from 'react-dom';
 import { AIGeneratorAPI } from '../../extension/api/client';
-import { useTranslations } from '../utils/i18n';
+import { getTranslations } from '../utils/i18n';
 
 interface ProductAIGeneratorProps {
   productId: string | number;
@@ -27,8 +27,8 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
   onUpdateGenerationState,
 }) => {
   // Get translations
-  const t = useTranslations();
-  
+  const t = getTranslations();
+
   // Performance monitoring - track renders
   const renderCountRef = useRef(0);
   const lastRenderTimeRef = useRef(Date.now());
@@ -259,7 +259,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         const variantId = element.getAttribute('data-variant-id') ||
                          element.getAttribute('data-variant') ||
                          element.getAttribute('data-product-variant');
-        if (variantId && (element.classList.contains('selected') || element.classList.contains('active') || 
+        if (variantId && (element.classList.contains('selected') || element.classList.contains('active') ||
                          (element as HTMLInputElement).checked)) {
           console.log('✅ Found variant ID via data attribute on active element:', variantId);
           return variantId;
@@ -419,7 +419,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         console.log('🎯 Found Horizon theme variant-picker, setting up listeners');
         variantPicker.addEventListener('change', handleVariantChange);
         variantPicker.addEventListener('input', handleVariantChange);
-        
+
         // Also listen for changes within the variant picker
         const variantPickerForm = variantPicker.querySelector('form');
         if (variantPickerForm) {
@@ -456,16 +456,16 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
       // Method 7: Listen for URL changes (for ?variant= parameter detection)
       window.addEventListener('popstate', handleVariantChange);
       window.addEventListener('hashchange', handleVariantChange);
-      
+
       // Also listen for programmatic URL changes (some themes use history.pushState)
       const originalPushState = history.pushState;
       const originalReplaceState = history.replaceState;
-      
+
       history.pushState = function(...args) {
         originalPushState.apply(history, args);
         setTimeout(handleVariantChange, 0); // Async to ensure URL is updated
       };
-      
+
       history.replaceState = function(...args) {
         originalReplaceState.apply(history, args);
         setTimeout(handleVariantChange, 0); // Async to ensure URL is updated
@@ -493,15 +493,15 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         document.removeEventListener('product:variant:change', handleVariantChange);
         document.removeEventListener('variant:updated', handleVariantChange);
         document.removeEventListener('product:variant:updated', handleVariantChange);
-        
+
         // Remove URL change listeners
         window.removeEventListener('popstate', handleVariantChange);
         window.removeEventListener('hashchange', handleVariantChange);
-        
+
         // Restore original history methods
         history.pushState = originalPushState;
         history.replaceState = originalReplaceState;
-        
+
         observer.disconnect();
       };
     };
@@ -913,7 +913,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
         {/* End Image Upload + Crop Tool */}
         <div className="ai-generator-actions">
           <button
-            className="product-form__submit button button--full-width button--secondary"
+            className="product-form__submit button button--full-width button--secondary ai-generator-button"
             onClick={handleGenerationToggle}
             disabled={!selectedStyle || !currentVariantId || generationLoading}
             style={{ cursor: (selectedStyle && currentVariantId) ? 'pointer' : 'not-allowed' }}
@@ -950,7 +950,7 @@ export const ProductAIGenerator: React.FC<ProductAIGeneratorProps> = ({
                         >
                           <img
                             src={gen.imageUrl}
-                            alt={`AI Art ${setIndex + 1}-${index + 1}`}
+                            alt={`Artwork ${setIndex + 1}-${index + 1}`}
                             style={{
                               maxWidth: 180,
                               borderRadius: 4,
@@ -1133,6 +1133,16 @@ const styles = `
 .ai-generator-actions {
   margin-top: 30px;
   text-align: center;
+}
+
+.ai-generator-button {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  min-height: 44px !important;
+  gap: 8px !important;
 }
 
 .ai-generator-debug {

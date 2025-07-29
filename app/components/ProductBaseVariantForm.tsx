@@ -5,11 +5,10 @@ import {
   TextField,
   Button,
   InlineStack,
-  Divider,
   Badge,
   Tooltip,
 } from "@shopify/polaris";
-import { DeleteIcon, PlusIcon, InfoIcon } from "@shopify/polaris-icons";
+import { DeleteIcon, PlusIcon, InfoIcon, DuplicateIcon } from "@shopify/polaris-icons";
 import { useCallback } from "react";
 import type { ProductBaseVariantData } from "~/schemas/productBase";
 import { getDimensionInfo } from "~/utils/dpiConverter";
@@ -25,6 +24,16 @@ interface ProductBaseVariantUIData {
   optionValues: Record<string, string>;
 }
 
+// Auto-generate variant name from option values (like Shopify does)
+function generateVariantName(optionValues: Record<string, string>, optionNames: string[]): string {
+  const values = optionNames
+    .map(name => optionValues[name])
+    .filter(value => value && value.trim() !== '')
+    .map(value => value.trim());
+  
+  return values.length > 0 ? values.join(' / ') : 'Default Title';
+}
+
 interface ProductBaseVariantFormProps {
   variants: ProductBaseVariantData[];
   optionNames: string[];
@@ -38,9 +47,10 @@ export function ProductBaseVariantForm({
   onVariantsChange,
   errors = {},
 }: ProductBaseVariantFormProps) {
-  // Convert ProductBaseVariantData to UI format (with string values)
+  // Convert ProductBaseVariantData to UI format (with string values and auto-generated names)
   const uiVariants: ProductBaseVariantUIData[] = variants.map(variant => ({
     ...variant,
+    name: generateVariantName(variant.optionValues, optionNames),
     widthPx: variant.widthPx.toString(),
     heightPx: variant.heightPx.toString(),
     price: variant.price.toString(),
@@ -59,7 +69,10 @@ export function ProductBaseVariantForm({
       // Handle nested field paths like 'optionValues.Size'
       if (field.includes('.')) {
         const [parentField, childField] = field.split('.');
-        fieldValue = uiVariants[variantIndex][parentField as keyof ProductBaseVariantUIData]?.[childField];
+        const parentValue = uiVariants[variantIndex][parentField as keyof ProductBaseVariantUIData];
+        if (parentValue && typeof parentValue === 'object' && childField in parentValue) {
+          fieldValue = (parentValue as Record<string, string>)[childField];
+        }
       } else {
         fieldValue = uiVariants[variantIndex][field as keyof ProductBaseVariantUIData];
       }
@@ -86,25 +99,28 @@ export function ProductBaseVariantForm({
 
       return {
         ...uiVariant,
+        name: generateVariantName(uiVariant.optionValues, optionNames),
         widthPx: uiVariant.widthPx === "" ? 1 : Number(uiVariant.widthPx) || 1,
         heightPx: uiVariant.heightPx === "" ? 1 : Number(uiVariant.heightPx) || 1,
         price: uiVariant.price === "" ? 0 : Number(uiVariant.price) || 0,
         compareAtPrice,
       };
     });
-  }, []);
+  }, [optionNames]);
 
   const addVariant = useCallback(() => {
+    const optionValues = optionNames.reduce((acc, optionName) => {
+      acc[optionName] = "";
+      return acc;
+    }, {} as Record<string, string>);
+    
     const newUIVariant: ProductBaseVariantUIData = {
-      name: "",
+      name: generateVariantName(optionValues, optionNames),
       widthPx: "",
       heightPx: "",
       price: "",
       compareAtPrice: "",
-      optionValues: optionNames.reduce((acc, optionName) => {
-        acc[optionName] = "";
-        return acc;
-      }, {} as Record<string, string>),
+      optionValues,
     };
     const newUIVariants = [...uiVariants, newUIVariant];
     onVariantsChange(convertToVariantData(newUIVariants));
@@ -116,6 +132,20 @@ export function ProductBaseVariantForm({
       onVariantsChange(convertToVariantData(newUIVariants));
     },
     [uiVariants, onVariantsChange, convertToVariantData]
+  );
+
+  const cloneVariant = useCallback(
+    (index: number) => {
+      const variantToClone = uiVariants[index];
+      const clonedVariant: ProductBaseVariantUIData = {
+        ...variantToClone,
+        id: undefined, // Remove ID so it creates a new variant
+        name: generateVariantName(variantToClone.optionValues, optionNames),
+      };
+      const newUIVariants = [...uiVariants, clonedVariant];
+      onVariantsChange(convertToVariantData(newUIVariants));
+    },
+    [uiVariants, optionNames, onVariantsChange, convertToVariantData]
   );
 
   const updateVariant = useCallback(
@@ -130,33 +160,26 @@ export function ProductBaseVariantForm({
   const updateVariantOptionValue = useCallback(
     (variantIndex: number, optionName: string, value: string) => {
       const newUIVariants = [...uiVariants];
+      const updatedOptionValues = {
+        ...newUIVariants[variantIndex].optionValues,
+        [optionName]: value,
+      };
       newUIVariants[variantIndex] = {
         ...newUIVariants[variantIndex],
-        optionValues: {
-          ...newUIVariants[variantIndex].optionValues,
-          [optionName]: value,
-        },
+        optionValues: updatedOptionValues,
+        name: generateVariantName(updatedOptionValues, optionNames),
       };
       onVariantsChange(convertToVariantData(newUIVariants));
     },
-    [uiVariants, onVariantsChange, convertToVariantData]
+    [uiVariants, onVariantsChange, convertToVariantData, optionNames]
   );
 
   return (
     <Card>
       <BlockStack gap="400">
-        <InlineStack align="space-between">
-          <Text variant="headingMd" as="h3">
-            Variants
-          </Text>
-          <Button
-            icon={PlusIcon}
-            onClick={addVariant}
-            size="slim"
-          >
-            Add Variant
-          </Button>
-        </InlineStack>
+        <Text variant="headingMd" as="h3">
+          Variants
+        </Text>
 
         {uiVariants.length === 0 ? (
           <Text variant="bodyMd" tone="subdued" as="p">
@@ -169,28 +192,83 @@ export function ProductBaseVariantForm({
                 <BlockStack gap="400">
                   <InlineStack align="space-between">
                     <Text variant="headingSm" as="h4">
-                      Variant {index + 1}
+                      {variant.name || `Variant ${index + 1}`}
                     </Text>
-                    <Button
-                      icon={DeleteIcon}
-                      onClick={() => removeVariant(index)}
-                      tone="critical"
-                      size="slim"
-                      accessibilityLabel={`Remove variant ${index + 1}`}
-                    />
+                    <InlineStack gap="200">
+                      <Button
+                        icon={DuplicateIcon}
+                        onClick={() => cloneVariant(index)}
+                        size="slim"
+                        accessibilityLabel={`Clone variant ${index + 1}`}
+                      />
+                      <Button
+                        icon={DeleteIcon}
+                        onClick={() => removeVariant(index)}
+                        tone="critical"
+                        size="slim"
+                        accessibilityLabel={`Remove variant ${index + 1}`}
+                      />
+                    </InlineStack>
                   </InlineStack>
 
-                  <TextField
-                    label="Variant Name"
-                    value={variant.name}
-                    onChange={(value) => updateVariant(index, 'name', value)}
-                    error={getFieldError(index, 'name')}
-                    placeholder="e.g., Small, Medium, A4, 12oz"
-                    autoComplete="off"
-                    requiredIndicator
-                  />
+                  {/* 1. Option Values */}
+                  {optionNames.length > 0 && (
+                    <BlockStack gap="300">
+                      <Text variant="bodyMd" fontWeight="semibold" as="p">
+                        Option Values
+                      </Text>
+                      <InlineStack gap="300" wrap>
+                        {optionNames.map((optionName) => (
+                          <div key={optionName} style={{ minWidth: '200px' }}>
+                            <TextField
+                              label={optionName}
+                              value={variant.optionValues[optionName] || ""}
+                              onChange={(value) => updateVariantOptionValue(index, optionName, value)}
+                              error={getFieldError(index, `optionValues.${optionName}`)}
+                              placeholder={`Enter ${optionName.toLowerCase()}`}
+                              autoComplete="off"
+                            />
+                          </div>
+                        ))}
+                      </InlineStack>
+                    </BlockStack>
+                  )}
 
+                  {/* 2. Prices */}
                   <BlockStack gap="300">
+                    <Text variant="bodyMd" fontWeight="semibold" as="p">
+                      Pricing
+                    </Text>
+                    <InlineStack gap="300">
+                      <TextField
+                        label="Price"
+                        value={variant.price.toString()}
+                        onChange={(value) => updateVariant(index, 'price', value)}
+                        error={getFieldError(index, 'price')}
+                        type="number"
+                        prefix="$"
+                        placeholder="0.00"
+                        autoComplete="off"
+                        requiredIndicator
+                      />
+                      <TextField
+                        label="Compare At Price (optional)"
+                        value={variant.compareAtPrice?.toString() || ""}
+                        onChange={(value) => updateVariant(index, 'compareAtPrice', value)}
+                        error={getFieldError(index, 'compareAtPrice')}
+                        type="number"
+                        prefix="$"
+                        placeholder="0.00"
+                        autoComplete="off"
+                      />
+                    </InlineStack>
+                  </BlockStack>
+
+                  {/* 3. Print Size */}
+                  <BlockStack gap="300">
+                    <Text variant="bodyMd" fontWeight="semibold" as="p">
+                      Print Size
+                    </Text>
                     <InlineStack gap="300">
                       <TextField
                         label="Width (pixels)"
@@ -248,55 +326,6 @@ export function ProductBaseVariantForm({
                       </Card>
                     )}
                   </BlockStack>
-
-                  <InlineStack gap="300">
-                    <TextField
-                      label="Price"
-                      value={variant.price.toString()}
-                      onChange={(value) => updateVariant(index, 'price', value)}
-                      error={getFieldError(index, 'price')}
-                      type="number"
-                      prefix="$"
-                      placeholder="0.00"
-                      autoComplete="off"
-                      requiredIndicator
-                    />
-                    <TextField
-                      label="Compare At Price (optional)"
-                      value={variant.compareAtPrice?.toString() || ""}
-                      onChange={(value) => updateVariant(index, 'compareAtPrice', value)}
-                      error={getFieldError(index, 'compareAtPrice')}
-                      type="number"
-                      prefix="$"
-                      placeholder="0.00"
-                      autoComplete="off"
-                    />
-                  </InlineStack>
-
-                  {optionNames.length > 0 && (
-                    <>
-                      <Divider />
-                      <BlockStack gap="300">
-                        <Text variant="bodyMd" fontWeight="semibold" as="p">
-                          Option Values
-                        </Text>
-                        <InlineStack gap="300" wrap>
-                          {optionNames.map((optionName) => (
-                            <div key={optionName} style={{ minWidth: '200px' }}>
-                              <TextField
-                                label={optionName}
-                                value={variant.optionValues[optionName] || ""}
-                                onChange={(value) => updateVariantOptionValue(index, optionName, value)}
-                                error={getFieldError(index, `optionValues.${optionName}`)}
-                                placeholder={`Enter ${optionName.toLowerCase()}`}
-                                autoComplete="off"
-                              />
-                            </div>
-                          ))}
-                        </InlineStack>
-                      </BlockStack>
-                    </>
-                  )}
                 </BlockStack>
               </Card>
             ))}
@@ -306,6 +335,16 @@ export function ProductBaseVariantForm({
         <Text variant="bodySm" tone="subdued" as="p">
           Variants define the different sizes, options, and pricing for this product base. Each variant should specify exact pixel dimensions for AI generation.
         </Text>
+
+        <InlineStack align="start">
+          <Button
+            icon={PlusIcon}
+            onClick={addVariant}
+            variant="primary"
+          >
+            Add Variant
+          </Button>
+        </InlineStack>
       </BlockStack>
     </Card>
   );

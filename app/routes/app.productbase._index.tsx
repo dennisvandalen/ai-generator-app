@@ -46,7 +46,7 @@ import {
   type NewProductBaseOption,
   type ProductBaseVariantOptionValue,
 } from "~/db/schema";
-import {eq, count} from "drizzle-orm";
+import {eq,count} from "drizzle-orm";
 import {getShopId} from "~/utils/getShopId";
 import {randomUUID} from "crypto";
 
@@ -184,7 +184,7 @@ export const action = async ({request}: ActionFunctionArgs): Promise<Response> =
 
       // Insert the product base first to get its ID
       const result = await drizzleDb.insert(productBasesTable).values(newProductBase);
-      const productBaseId = result.lastInsertRowid as number;
+      const productBaseId = Number(result.lastInsertRowid);
 
       // Insert options into the options table
       if (optionNamesArray.length > 0) {
@@ -245,7 +245,7 @@ export const action = async ({request}: ActionFunctionArgs): Promise<Response> =
 
       // Insert the variant first to get its ID
       const result = await drizzleDb.insert(productBaseVariantsTable).values(newVariant);
-      const variantId = result.lastInsertRowid as number;
+      const variantId = Number(result.lastInsertRowid);
 
       // Get all options for this product base
       const options = await drizzleDb
@@ -391,14 +391,12 @@ export const action = async ({request}: ActionFunctionArgs): Promise<Response> =
       const id = parseInt(formData.get("id") as string);
 
       // Check if the product base has any associated products
-      const productCount = await drizzleDb
-        .select({
-          count: count(productProductBasesTable.productId),
-        })
+      const productRelations = await drizzleDb
+        .select()
         .from(productProductBasesTable)
         .where(eq(productProductBasesTable.productBaseId, id));
 
-      if (productCount[0].count > 0) {
+      if (productRelations.length > 0) {
         const data: ActionData = {
           error: "Cannot delete product base that is being used by products"
         };
@@ -407,9 +405,7 @@ export const action = async ({request}: ActionFunctionArgs): Promise<Response> =
 
       // Get the product base name for the success message
       const productBase = await drizzleDb
-        .select({
-          name: productBasesTable.name,
-        })
+        .select()
         .from(productBasesTable)
         .where(eq(productBasesTable.id, id))
         .limit(1);
@@ -460,6 +456,7 @@ export default function ProductbasePage() {
   const [variantHeight, setVariantHeight] = useState("");
   const [variantPrice, setVariantPrice] = useState("");
   const [variantCompareAtPrice, setVariantCompareAtPrice] = useState("");
+  const [variantOptionValues, setVariantOptionValues] = useState<Record<string, string>>({});
 
   // Handle success toasts
   useEffect(() => {
@@ -540,7 +537,7 @@ export default function ProductbasePage() {
                       <Icon source={VariantIcon} tone="base"/>
                     </Box>
                     <Text variant="headingMd" as="h3">
-                      {Object.values(variantsByProductBase).reduce((sum, variants) => sum + variants.length, 0)}
+                      {(Object.values(variantsByProductBase) as ProductBaseVariant[][]).reduce((sum: number, variants: ProductBaseVariant[]) => sum + variants.length, 0)}
                     </Text>
                   </InlineStack>
                   <Text variant="bodySm" tone="subdued" as="span">Total Variants</Text>
@@ -553,7 +550,7 @@ export default function ProductbasePage() {
                       <Icon source={EyeCheckMarkIcon} tone="success"/>
                     </Box>
                     <Text variant="headingMd" as="h3">
-                      {productBases.filter(base => base.isActive).length}
+                      {productBases.filter((base: ProductBase) => base.isActive).length}
                     </Text>
                   </InlineStack>
                   <Text variant="bodySm" tone="subdued" as="span">Active Bases</Text>
@@ -608,11 +605,6 @@ export default function ProductbasePage() {
                                 {base.description}
                               </Text>
                             )}
-                            {base.basePrice && (
-                              <Text variant="bodySm" tone="subdued" as="span">
-                                ${base.basePrice}
-                              </Text>
-                            )}
                           </BlockStack>
                         </InlineStack>
                       </BlockStack>
@@ -620,7 +612,7 @@ export default function ProductbasePage() {
                     <IndexTable.Cell>
                       {optionsByProductBase[base.id]?.length > 0 ? (
                         <InlineStack gap="200" wrap>
-                          {optionsByProductBase[base.id].map((option) => (
+                          {optionsByProductBase[base.id].map((option: ProductBaseOption) => (
                             <Tag key={option.id}>
                               {option.name}
                             </Tag>
@@ -776,93 +768,6 @@ export default function ProductbasePage() {
           </BlockStack>
         </Card>
       </BlockStack>
-
-      {/* Create Variant Modal */}
-      <Modal id="create-variant-modal" variant="large">
-        <AppProvider i18n={{}}>
-          <div style={{padding: '1.5rem'}}>
-            <BlockStack gap="400">
-              <TextField
-                label="Variant Name"
-                value={variantName}
-                onChange={setVariantName}
-                placeholder="e.g., White, Large, A4"
-                autoComplete="off"
-              />
-
-              {/* Dynamic option value fields */}
-              {selectedProductBaseId && optionsByProductBase[selectedProductBaseId]?.map((option) => (
-                <TextField
-                  key={option.id}
-                  label={option.name}
-                  value={variantOptionValues[option.name] || ""}
-                  onChange={(value) => setVariantOptionValues(prev => ({
-                    ...prev,
-                    [option.name]: value
-                  }))}
-                  placeholder={`Enter ${option.name.toLowerCase()}`}
-                  autoComplete="off"
-                />
-              ))}
-
-              <InlineStack gap="300">
-                <TextField
-                  label="Width (pixels)"
-                  value={variantWidth}
-                  onChange={setVariantWidth}
-                  placeholder="2000"
-                  type="number"
-                  autoComplete="off"
-                />
-
-                <TextField
-                  label="Height (pixels)"
-                  value={variantHeight}
-                  onChange={setVariantHeight}
-                  placeholder="2000"
-                  type="number"
-                  autoComplete="off"
-                />
-              </InlineStack>
-
-              <TextField
-                label="Price"
-                value={variantPrice}
-                onChange={setVariantPrice}
-                placeholder="0.00"
-                type="number"
-                prefix="$"
-                helpText="Absolute price for this variant"
-                autoComplete="off"
-              />
-
-              <TextField
-                label="Compare At Price (optional)"
-                value={variantCompareAtPrice}
-                onChange={setVariantCompareAtPrice}
-                placeholder="0.00"
-                type="number"
-                prefix="$"
-                helpText="Original price for this variant (for sale pricing)"
-                autoComplete="off"
-              />
-            </BlockStack>
-          </div>
-        </AppProvider>
-        <TitleBar title="Add Product Base Variant">
-          <button
-            variant="primary"
-            onClick={handleCreateVariant}
-            disabled={!variantName || !variantWidth || !variantHeight}
-          >
-            Add Variant
-          </button>
-          <button onClick={() => shopify.modal.hide('create-variant-modal')}>
-            Cancel
-          </button>
-        </TitleBar>
-      </Modal>
-
     </Page>
   );
 }

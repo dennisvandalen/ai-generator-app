@@ -168,7 +168,7 @@ function MultiselectCombobox({
 
   return (
     <div>
-      <Text variant="bodyMd" as="label" fontWeight="medium">
+      <Text variant="bodyMd" as="p" fontWeight="medium">
         {label}
       </Text>
       <div style={{marginTop: '0.5rem'}}>

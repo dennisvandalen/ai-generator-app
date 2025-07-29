@@ -60,4 +60,5 @@ if (APP_ENV === 'production' || APP_ENV === 'staging') {
   console.log('Connected to SQLite database');
 }
 
-export default drizzleDb;
+// Export with type assertion to fix the union type issue
+export default drizzleDb as LibSQLDatabase<typeof schema>;

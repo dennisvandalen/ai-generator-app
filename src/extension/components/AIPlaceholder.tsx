@@ -50,7 +50,7 @@ export const AIPlaceholder: React.FC<AIPlaceholderProps> = ({
       <div style={contentStyle}>
         <div style={{ fontSize: '24px', marginBottom: '8px' }}>🎨✨</div>
         <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '4px' }}>
-          AI Art Generation Available!
+          Artwork Generation Available!
         </div>
         <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '12px' }}>
           Transform your images with AI magic

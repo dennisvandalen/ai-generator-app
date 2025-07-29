@@ -5,7 +5,8 @@ import { SetupGuide } from "./SetupGuide";
 // Define interfaces for the component
 interface ButtonProps {
   url?: string;
-  external?: string;
+  external?: boolean;
+  target?: string;
   onAction?: () => void;
 }
 
@@ -29,9 +30,19 @@ interface SetupItem {
   secondaryButton?: ButtonConfig;
 }
 
-export const Onboarding = (): JSX.Element => {
+interface ThemeExtensionStatus {
+  isEnabled: boolean;
+  isInstalled: boolean;
+}
+
+interface OnboardingProps {
+  themeExtensionStatus?: ThemeExtensionStatus;
+  appEmbedDeeplink?: string | null;
+}
+
+export const Onboarding = ({ themeExtensionStatus, appEmbedDeeplink }: OnboardingProps): JSX.Element => {
   const [showGuide, setShowGuide] = useState<boolean>(true);
-  const [items, setItems] = useState<SetupItem[]>(ITEMS);
+  const [items, setItems] = useState<SetupItem[]>(getSetupItems(themeExtensionStatus, appEmbedDeeplink));
 
   // Example of step complete handler, adjust for your use case
   const onStepComplete = async (id: number): Promise<void> => {
@@ -56,7 +67,7 @@ export const Onboarding = (): JSX.Element => {
       <SetupGuide
         onDismiss={() => {
           setShowGuide(false);
-          setItems(ITEMS);
+          setItems(getSetupItems(themeExtensionStatus, appEmbedDeeplink));
         }}
         onStepComplete={onStepComplete}
         items={items}
@@ -65,8 +76,42 @@ export const Onboarding = (): JSX.Element => {
   );
 };
 
+// Function to generate setup items based on theme extension status
+const getSetupItems = (themeExtensionStatus?: ThemeExtensionStatus, appEmbedDeeplink?: string | null): SetupItem[] => {
+  const themeExtensionItem: SetupItem = {
+    id: 0,
+    title: "Enable Theme Extension",
+    description: themeExtensionStatus?.isEnabled
+      ? "✅ Your app embed is active and working! Customers can now use AI generation on your storefront."
+      : themeExtensionStatus?.isInstalled
+      ? "⚠️ Your app embed is installed but not enabled. Activate it in your theme settings to allow customers to use AI generation."
+      : "❌ Your app embed is not installed. Install the theme extension to enable AI generation for customers.",
+    image: {
+      url: "https://cdn.shopify.com/shopifycloud/shopify/assets/admin/home/onboarding/detail-images/home-onboard-theme-customization-7f2b4b9b1e21b9e5d5e3f1c2a3b4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2.svg",
+      alt: "Theme extension illustration",
+    },
+    complete: themeExtensionStatus?.isEnabled || false,
+    primaryButton: {
+      content: themeExtensionStatus?.isEnabled
+        ? "Theme Extension Active"
+        : themeExtensionStatus?.isInstalled
+        ? "Enable App Embed"
+        : "Install App Embed",
+      props: appEmbedDeeplink
+        ? { url: appEmbedDeeplink, external: true, target: "_blank" }
+        : { url: "/app/products" },
+    },
+    secondaryButton: undefined,
+  };
+
+  return [
+    themeExtensionItem,
+    ...ORIGINAL_ITEMS.map(item => ({ ...item, id: item.id + 1 }))
+  ];
+};
+
 // EXAMPLE DATA - COMPONENT API
-const ITEMS: SetupItem[] = [
+const ORIGINAL_ITEMS: SetupItem[] = [
   {
     id: 0,
     title: "Add your first product",
@@ -81,14 +126,14 @@ const ITEMS: SetupItem[] = [
       content: "Add product",
       props: {
         url: "https://www.example.com",
-        external: "true",
+        external: true,
       },
     },
     secondaryButton: {
       content: "Import products",
       props: {
         url: "https://www.example.com",
-        external: "true",
+        external: true,
       },
     },
   },
@@ -122,7 +167,7 @@ const ITEMS: SetupItem[] = [
       content: "Add a language",
       props: {
         url: "https://www.example.com",
-        external: "true",
+        external: true,
       },
     },
   },

@@ -23,6 +23,7 @@ export interface Translations {
   selectVariantFirst: string;
   uploadImageToContinue: string;
   selectStyleToContinue: string;
+  uploadAndSelectImageFirst: string;
   loadingMessages: string[];
 }
 
@@ -33,7 +34,7 @@ const translations: Record<string, Translations> = {
     error: 'Error',
     retry: 'Retry',
     notAvailable: 'AI generation is not available for this product',
-    customize: 'Customize',
+    customize: 'Personalize',
     selectStyle: 'Select style:',
     uploadImage: 'Upload your image:',
     dragDropText: 'Drag & Drop your image here or click to upload',
@@ -46,19 +47,20 @@ const translations: Record<string, Translations> = {
     cropAgain: 'Crop Again',
     remove: 'Remove',
     changeGeneration: '🔄 Change Generation',
-    generateAiArt: '🎨 Generate AI Art',
-    selectPreferred: 'Select your preferred AI Art:',
+    generateAiArt: '🎨 Generate Artwork',
+    selectPreferred: 'Select your preferred Artwork:',
     generationSelected: '✅ Generation Selected',
     selectVariantFirst: '⚠️ Select a variant first',
     uploadImageToContinue: '🚀 Upload image to continue',
     selectStyleToContinue: '🚀 Select AI Style to continue',
+    uploadAndSelectImageFirst: '🎨 Upload and select an image first',
     loadingMessages: [
       'Summoning pixels...',
       'Unleashing creativity...',
       'Crafting your masterpiece...',
       'Adding a touch of magic...',
       'Almost there...',
-      'Generating AI art...',
+      'Generating artwork...',
     ],
   },
   nl: {
@@ -67,7 +69,7 @@ const translations: Record<string, Translations> = {
     error: 'Fout',
     retry: 'Opnieuw proberen',
     notAvailable: 'AI-generatie is niet beschikbaar voor dit product',
-    customize: 'Aanpassen',
+    customize: 'Personaliseren',
     selectStyle: 'Selecteer stijl:',
     uploadImage: 'Upload je afbeelding:',
     dragDropText: 'Sleep & zet je afbeelding hier neer of klik om te uploaden',
@@ -80,19 +82,20 @@ const translations: Record<string, Translations> = {
     cropAgain: 'Opnieuw bijsnijden',
     remove: 'Verwijderen',
     changeGeneration: '🔄 Generatie wijzigen',
-    generateAiArt: '🎨 AI-kunst genereren',
-    selectPreferred: 'Selecteer je favoriete AI-kunst:',
+    generateAiArt: '🎨 Kunstwerk genereren',
+    selectPreferred: 'Selecteer je favoriete kunstwerk:',
     generationSelected: '✅ Generatie geselecteerd',
     selectVariantFirst: '⚠️ Selecteer eerst een variant',
     uploadImageToContinue: '🚀 Upload afbeelding om door te gaan',
-    selectStyleToContinue: '🚀 Selecteer AI-stijl om door te gaan',
+    selectStyleToContinue: '🚀 Selecteer stijl om door te gaan',
+    uploadAndSelectImageFirst: '🎨 Upload en selecteer eerst een afbeelding',
     loadingMessages: [
       'Pixels oproepen...',
       'Creativiteit ontketenen...',
       'Je meesterwerk maken...',
       'Een vleugje magie toevoegen...',
       'Bijna klaar...',
-      'AI-kunst genereren...',
+      'Kunstwerk genereren...',
     ],
   },
 };
@@ -103,21 +106,21 @@ export function getLocale(): string {
     if (typeof window !== 'undefined' && (window as any).Shopify?.locale) {
       const shopifyLocale = (window as any).Shopify.locale;
       console.log('🌍 Detected Shopify locale:', shopifyLocale);
-      
+
       // Convert Shopify locale format (e.g., 'nl-NL', 'en-US') to our simple format
       const simplifiedLocale = shopifyLocale.split('-')[0].toLowerCase();
-      
+
       // Check if we have translations for this locale
       if (translations[simplifiedLocale]) {
         return simplifiedLocale;
       }
     }
-    
+
     // Fallback to browser locale
     if (typeof navigator !== 'undefined') {
       const browserLocale = navigator.language.split('-')[0].toLowerCase();
       console.log('🌍 Detected browser locale:', browserLocale);
-      
+
       if (translations[browserLocale]) {
         return browserLocale;
       }
@@ -125,13 +128,13 @@ export function getLocale(): string {
   } catch (error) {
     console.warn('Error detecting locale:', error);
   }
-  
+
   // Default fallback
   console.log('🌍 Using fallback locale: en');
   return 'en';
 }
 
-export function useTranslations(): Translations {
+export function getTranslations(): Translations {
   const locale = getLocale();
   return translations[locale] || translations.en;
 }

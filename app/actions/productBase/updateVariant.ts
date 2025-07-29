@@ -1,5 +1,5 @@
-import { db } from "~/db.server";
-import { productBaseVariants } from "~/db/schema";
+import drizzleDb from "~/db.server";
+import { productBaseVariantsTable } from "~/db/schema";
 import { withZodHandler } from "~/utils/withZodHandler";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -17,16 +17,15 @@ export const updateVariant = withZodHandler(
   async ({ request, context: { session } }, data) => {
 
     try {
-      const [updatedVariant] = await db
-        .update(productBaseVariants)
+      const [updatedVariant] = await drizzleDb
+        .update(productBaseVariantsTable)
         .set({
           name: data.name,
-          width: data.width,
-          height: data.height,
-          optionValues: JSON.stringify(data.optionValues),
-          updatedAt: new Date(),
+          widthPx: data.width,
+          heightPx: data.height,
+          updatedAt: new Date().toISOString(),
         })
-        .where(eq(productBaseVariants.id, data.variantId))
+        .where(eq(productBaseVariantsTable.id, parseInt(data.variantId)))
         .returning();
 
       if (!updatedVariant) {

@@ -1,6 +1,6 @@
 import type {LoaderFunctionArgs, HeadersFunction } from "@remix-run/node";
 import { boundary } from "@shopify/shopify-app-remix/server";
-import {useLoaderData, useNavigate, useActionData, Form} from "@remix-run/react";
+import {useLoaderData, useNavigate, useFetcher} from "@remix-run/react";
 import {useState, useEffect} from "react";
 import {
   Page,
@@ -32,7 +32,7 @@ import * as updateProductBase from "~/actions/productBase/update";
 
 // Wire up the action router
 export const action = createActionRouter({
-  "update-product-base": updateProductBase.action,
+  "update-product-base": updateProductBase.update,
 });
 
 export const loader = async ({request, params}: LoaderFunctionArgs) => {
@@ -133,7 +133,7 @@ export const headers: HeadersFunction = (headersArgs) => {
 
 export default function ProductBaseEditPage() {
   const {productBase, options, variants, suggestionOptions} = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
+  const fetcher = useFetcher();
   const navigate = useNavigate();
   const [isClient, setIsClient] = useState(false);
   const appBridge = useAppBridge();
@@ -167,57 +167,39 @@ export default function ProductBaseEditPage() {
         id: productBase.uuid,
         name: productBase.name || "",
         description: productBase.description || "",
-        optionNames: options.map(option => option.name),
+        optionNames: options.map((option: any) => option.name),
         variants: variants || [],
       });
     }
   }, [productBase, options, variants, form]);
 
-  // Form submission handler - now uses Form action
-  const onSubmit = handleSubmit((data) => {
-    // Create form data for submission
-    const formData = new FormData();
-    formData.append('data', JSON.stringify({ ...data, _action: "update-product-base" }));
+  // Direct handler for RHFFormSaveBar (like AI Styles)
+  const handleSave = (data: ProductBaseFormData) => {
+    const submitData = { ...data, _action: "update-product-base" };
+    fetcher.submit(submitData, { method: "post", encType: "application/json" });
+  };
 
-    // Submit the form
-    const form = document.getElementById('product-base-form') as HTMLFormElement;
-    if (form) {
-      // Clear existing data input
-      const existingInput = form.querySelector('input[name="data"]');
-      if (existingInput) {
-        existingInput.remove();
-      }
-
-      // Add new data input
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'data';
-      input.value = JSON.stringify({ ...data, _action: "update-product-base" });
-      form.appendChild(input);
-
-      form.submit();
-    }
-  });
-
-  // Handle action response
+  // Handle fetcher response (aligned with AI Styles pattern)
   useEffect(() => {
-    if (actionData) {
-      if (actionData.success) {
+    if (fetcher.state === 'idle' && fetcher.data) {
+      if ((fetcher.data as any).success) {
+        // Reset form with new values to clear isDirty state
+        reset(formData);
         shopify?.toast.show("Product Base updated successfully", {duration: 3000});
-        // After successful save, the page will reload and form will be clean
-      } else if (actionData.error) {
-        if (actionData.details) {
-          actionData.details.forEach((detail: { field: string; message: string }) => {
+      } else if ((fetcher.data as any).error) {
+        // Handle server validation errors
+        if ((fetcher.data as any).details && Array.isArray((fetcher.data as any).details)) {
+          (fetcher.data as any).details.forEach((detail: { field: string; message: string }) => {
             form.setError(detail.field as keyof ProductBaseFormData, {
               message: detail.message
             });
           });
         }
-        console.error("Update failed:", actionData.error);
-        shopify?.toast.show(actionData.error, { isError: true });
+        console.error("Update failed:", (fetcher.data as any).error);
+        shopify?.toast.show((fetcher.data as any).error, { isError: true });
       }
     }
-  }, [actionData, shopify, form]);
+  }, [fetcher.state, fetcher.data, shopify, reset, form]);
 
   // Create interface wrapper for ProductBaseForm component
   const formInterface = {
@@ -227,8 +209,8 @@ export default function ProductBaseEditPage() {
     ),
     setField: (field: keyof ProductBaseFormData, value: any) =>
       setValue(field, value, { shouldDirty: true }),
-    submit: onSubmit,
-    isSubmitting: isSubmitting,
+    submit: () => handleSubmit(handleSave)(),
+    isSubmitting: fetcher.state === 'submitting',
   };
 
   const handleCancel = () => {
@@ -250,20 +232,18 @@ export default function ProductBaseEditPage() {
         </button>
       </TitleBar>
 
-      <Form id="product-base-form" method="post">
-        <RHFFormSaveBar
-          form={form}
-          onSave={onSubmit}
-          onDiscard={() => reset()}
-        />
+      <RHFFormSaveBar
+        form={form}
+        onSave={handleSave}
+        onDiscard={() => reset()}
+      />
 
-        <ProductBaseForm
-          form={formInterface}
-          suggestionOptions={suggestionOptions}
-          isEditing={true}
-          onCancel={handleCancel}
-        />
-      </Form>
+      <ProductBaseForm
+        form={formInterface}
+        suggestionOptions={suggestionOptions}
+        isEditing={true}
+        onCancel={handleCancel}
+      />
     </Page>
   );
 }

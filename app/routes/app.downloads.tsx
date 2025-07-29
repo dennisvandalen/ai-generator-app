@@ -48,7 +48,7 @@ export default function DownloadsPage() {
                   </InlineStack>
 
                   <Text variant="bodyMd" as="p">
-                    Access and download high-resolution AI-generated pet artwork for completed orders.
+                    Access and download high-resolution AI-generated artwork for completed orders.
                     Files are automatically generated after order placement.
                   </Text>
 
@@ -79,7 +79,7 @@ export default function DownloadsPage() {
                   heading="No downloads available yet"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
-                  <p>High-resolution AI-generated pet artwork will appear here after orders are placed and processed.</p>
+                  <p>High-resolution AI-generated artwork will appear here after orders are placed and processed.</p>
                 </EmptyState>
               </Card>
             </BlockStack>

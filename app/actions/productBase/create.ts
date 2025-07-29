@@ -1,5 +1,4 @@
 import type {ActionFunctionArgs} from "@remix-run/node";
-import {json} from "@remix-run/node";
 import {authenticate} from "~/shopify.server";
 import {getShopId} from "~/utils/getShopId";
 import {ProductBaseFormSchema} from "~/schemas/productBase";
@@ -14,7 +13,7 @@ import {
 import {randomUUID} from "crypto";
 import {eq} from "drizzle-orm";
 
-export const action = withZodHandler(
+export const create = withZodHandler(
   ProductBaseFormSchema,
   async ({request}: ActionFunctionArgs, data) => {
     const {session} = await authenticate.admin(request);
@@ -33,7 +32,7 @@ export const action = withZodHandler(
 
     // Insert the product base first to get its ID
     const result = await drizzleDb.insert(productBasesTable).values(newProductBase);
-    const productBaseId = result.lastInsertRowid as number;
+    const productBaseId = Number(result.lastInsertRowid);
 
     // Insert options into the options table
     if (data.optionNames && data.optionNames.length > 0) {
@@ -77,7 +76,7 @@ export const action = withZodHandler(
           updatedAt: new Date().toISOString(),
         });
 
-        const variantId = variantResult.lastInsertRowid as number;
+        const variantId = Number(variantResult.lastInsertRowid);
 
         // Insert option values for this variant
         if (variant.optionValues && Object.keys(variant.optionValues).length > 0) {
@@ -97,10 +96,10 @@ export const action = withZodHandler(
       }
     }
 
-    return json({
+    return {
       success: true,
       message: `Product Base "${data.name}" created successfully`,
       productBase: newProductBase,
-    });
+    };
   }
 );

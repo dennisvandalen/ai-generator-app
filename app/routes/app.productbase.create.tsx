@@ -1,7 +1,7 @@
 import type {LoaderFunctionArgs, HeadersFunction } from "@remix-run/node";
 import { boundary } from "@shopify/shopify-app-remix/server";
-import {useLoaderData, useNavigate, useActionData, Form} from "@remix-run/react";
-import {useState, useEffect, useCallback} from "react";
+import {useLoaderData, useNavigate, useFetcher} from "@remix-run/react";
+import {useState, useEffect} from "react";
 import {
   Page,
 } from "@shopify/polaris";
@@ -23,12 +23,21 @@ import { createActionRouter } from "~/utils/createActionRouter";
 import { RHFFormSaveBar } from "~/components/RHFFormSaveBar";
 import { ProductBaseForm } from "~/components/ProductBaseForm";
 
+// Type for the fetcher response
+type FetcherResponse = {
+  success?: boolean;
+  error?: string;
+  details?: Array<{ field: string; message: string }>;
+  message?: string;
+  productBase?: any;
+};
+
 // Import server-side action handlers
 import * as createProductBase from "~/actions/productBase/create";
 
 // Wire up the action router
 export const action = createActionRouter({
-  "create-product-base": createProductBase.action,
+  "create-product-base": createProductBase.create,
 });
 
 export const loader = async ({request}: LoaderFunctionArgs) => {
@@ -37,7 +46,7 @@ export const loader = async ({request}: LoaderFunctionArgs) => {
 
   // Fetch existing options to provide suggestions
   const existingOptions = await drizzleDb
-    .select({name: productBaseOptionsTable.name})
+    .select()
     .from(productBaseOptionsTable)
     .groupBy(productBaseOptionsTable.name);
 
@@ -55,7 +64,7 @@ export const headers: HeadersFunction = (headersArgs) => {
 
 export default function ProductBaseCreatePage() {
   const {suggestionOptions} = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
+  const fetcher = useFetcher<FetcherResponse>();
   const navigate = useNavigate();
   const [isClient, setIsClient] = useState(false);
   const appBridge = useAppBridge();
@@ -88,47 +97,32 @@ export default function ProductBaseCreatePage() {
   // Watch form data for reactive updates
   const formData = watch();
 
-  // Form submission handler - now uses Form action
-  const onSubmit = handleSubmit((data) => {
-    // Submit the form
-    const form = document.getElementById('product-base-create-form') as HTMLFormElement;
-    if (form) {
-      // Clear existing data input
-      const existingInput = form.querySelector('input[name="data"]');
-      if (existingInput) {
-        existingInput.remove();
-      }
-      
-      // Add new data input
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'data';
-      input.value = JSON.stringify({ ...data, _action: "create-product-base" });
-      form.appendChild(input);
-      
-      form.submit();
-    }
-  });
+  // Direct handler for RHFFormSaveBar (like AI Styles)
+  const handleSave = (data: ProductBaseFormData) => {
+    const submitData = { ...data, _action: "create-product-base" };
+    fetcher.submit(submitData, { method: "post", encType: "application/json" });
+  };
 
-  // Handle action response
+  // Handle fetcher response (aligned with AI Styles pattern)
   useEffect(() => {
-    if (actionData) {
-      if (actionData.success) {
+    if (fetcher.state === 'idle' && fetcher.data) {
+      if (fetcher.data.success) {
         shopify?.toast.show("Product Base created successfully", {duration: 3000});
         navigate('/app/productbase');
-      } else if (actionData.error) {
-        if (actionData.details) {
-          actionData.details.forEach((detail: { field: string; message: string }) => {
-            form.setError(detail.field as keyof ProductBaseFormData, { 
-              message: detail.message 
+      } else if (fetcher.data.error) {
+        // Handle server validation errors
+        if (fetcher.data.details && Array.isArray(fetcher.data.details)) {
+          fetcher.data.details.forEach((detail: { field: string; message: string }) => {
+            form.setError(detail.field as keyof ProductBaseFormData, {
+              message: detail.message
             });
           });
         }
-        console.error("Create failed:", actionData.error);
-        shopify?.toast.show(actionData.error, { isError: true });
+        console.error("Create failed:", fetcher.data.error);
+        shopify?.toast.show(fetcher.data.error, { isError: true });
       }
     }
-  }, [actionData, shopify, form, navigate]);
+  }, [fetcher.state, fetcher.data, shopify, form, navigate]);
 
   // Create interface wrapper for ProductBaseForm component
   const formInterface = {
@@ -136,10 +130,10 @@ export default function ProductBaseCreatePage() {
     errors: Object.fromEntries(
       Object.entries(errors).map(([key, error]) => [key, error?.message || ""])
     ),
-    setField: (field: keyof ProductBaseFormData, value: any) => 
+    setField: (field: keyof ProductBaseFormData, value: any) =>
       setValue(field, value, { shouldDirty: true }),
-    submit: onSubmit,
-    isSubmitting: isSubmitting,
+    submit: () => handleSave(formData),
+    isSubmitting: fetcher.state === 'submitting',
   };
 
   const handleCancel = () => {
@@ -161,20 +155,18 @@ export default function ProductBaseCreatePage() {
         </button>
       </TitleBar>
 
-      <Form id="product-base-create-form" method="post">
-        <RHFFormSaveBar
-          form={form}
-          onSave={onSubmit}
-          onDiscard={() => reset()}
-        />
+      <RHFFormSaveBar
+        form={form}
+        onSave={handleSave}
+        onDiscard={() => reset()}
+      />
 
-        <ProductBaseForm
-          form={formInterface}
-          suggestionOptions={suggestionOptions}
-          isEditing={false}
-          onCancel={handleCancel}
-        />
-      </Form>
+      <ProductBaseForm
+        form={formInterface}
+        suggestionOptions={suggestionOptions}
+        isEditing={false}
+        onCancel={handleCancel}
+      />
     </Page>
   );
 }

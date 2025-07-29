@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Thumbnail, Box, Text } from "@shopify/polaris";
 
 interface HoverImagePreviewProps {
@@ -98,13 +99,13 @@ export function HoverImagePreview({
         />
       </div>
       
-      {isHovered && (
+      {isHovered && typeof document !== 'undefined' && createPortal(
         <div
           style={{
             position: 'fixed',
             left: getPreviewPosition().left,
             top: getPreviewPosition().top,
-            zIndex: 9999,
+            zIndex: 99999,
             pointerEvents: 'none',
             backgroundColor: 'white',
             border: '1px solid #e1e1e1',
@@ -128,7 +129,8 @@ export function HoverImagePreview({
               borderRadius: '4px',
             }}
           />
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

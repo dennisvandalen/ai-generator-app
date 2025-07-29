@@ -214,7 +214,7 @@ export default function GenerationsPage() {
               <Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingLg">
-                    AI Pet Portrait Generations
+                    AI Portrait Generations
                   </Text>
 
 
@@ -303,9 +303,9 @@ export default function GenerationsPage() {
                       image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                     >
                       {generations.length === 0 ? (
-                        <p>Start creating AI-generated pet portraits to see them here.</p>
+                        <p>Start creating AI-generated portraits to see them here.</p>
                       ) : (
-                        <p>Try adjusting your search or filters to find what you're looking for.</p>
+                        <p>Try adjusting your search or filters to find what you are looking for.</p>
                       )}
                     </EmptyState>
                   ) : (

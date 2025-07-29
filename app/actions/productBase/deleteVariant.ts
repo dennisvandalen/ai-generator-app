@@ -1,11 +1,11 @@
-import { db } from "~/db.server";
-import { productBaseVariants } from "~/db/schema";
+import db from "~/db.server";
+import { productBaseVariantsTable } from "~/db/schema";
 import { withZodHandler } from "~/utils/withZodHandler";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 
 const deleteVariantSchema = z.object({
-  variantId: z.string(),
+  variantId: z.number(),
 });
 
 export const deleteVariant = withZodHandler(
@@ -14,8 +14,8 @@ export const deleteVariant = withZodHandler(
 
     try {
       const [deletedVariant] = await db
-        .delete(productBaseVariants)
-        .where(eq(productBaseVariants.id, data.variantId))
+        .delete(productBaseVariantsTable)
+        .where(eq(productBaseVariantsTable.id, data.variantId))
         .returning();
 
       if (!deletedVariant) {

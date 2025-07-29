@@ -26,10 +26,10 @@ export class AIGenerationService {
     });
     this.s3 = new S3Client({
       region: "auto",
-      endpoint: process.env.R2_ENDPOINT!,
+      endpoint: process.env.R2_ENDPOINT,
       credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+        accessKeyId: process.env.R2_ACCESS_KEY_ID,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
       },
     });
   }
@@ -74,7 +74,7 @@ export class AIGenerationService {
 
           await this.s3.send(
             new PutObjectCommand({
-              Bucket: process.env.R2_BUCKET!,
+              Bucket: process.env.R2_BUCKET,
               Key: key,
               Body: newBuffer,
               ContentType: mime,
@@ -104,15 +104,13 @@ export class AIGenerationService {
         num_images: numImages,
         output_format: "png",
       }
-    }) as any;
+    });
 
     const processingTime = Date.now() - startTime;
 
     let generatedImageUrls: string[] = [];
     if (result?.data?.images && Array.isArray(result.data.images) && result.data.images.length > 0) {
-      generatedImageUrls = result.data.images.map((img: any) => img.url || img);
-    } else if (result?.images && Array.isArray(result.images) && result.images.length > 0) {
-      generatedImageUrls = result.images.map((img: any) => img.url || img);
+      generatedImageUrls = result.data.images.map((img) => img.url);
     } else {
       throw new Error(`No images generated. Response keys: ${JSON.stringify(Object.keys(result || {}), null, 2)}`);
     }

@@ -7,7 +7,18 @@
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(rm:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm view:*)",
+      "Bash(npm install:*)",
+      "Bash(grep:*)",
+      "Bash(tail:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(find:*)",
+      "mcp__shopify-dev-mcp__introspect_admin_schema"
     ],
     "deny": []
   }

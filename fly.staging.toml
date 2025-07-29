@@ -5,6 +5,7 @@
 
 app = 'autopictura-beta'
 primary_region = 'ams'
+swap_size_mb = 512
 
 [build]
 
@@ -14,9 +15,10 @@ primary_region = 'ams'
   auto_stop_machines = 'stop'
   auto_start_machines = true
   processes = ['app']
+  min_machines_running = 1
 
 [[vm]]
-  memory = '1gb'
+  memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
 
@@ -29,4 +31,3 @@ primary_region = 'ams'
 
 [deploy]
   strategy = "rolling"
-  min_machines_running = 1

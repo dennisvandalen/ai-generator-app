@@ -1,10 +1,10 @@
-import { db } from "~/db.server";
-import { productBaseVariants } from "~/db/schema";
+import db from "~/db.server";
+import { productBaseVariantsTable } from "~/db/schema";
 import { withZodHandler } from "~/utils/withZodHandler";
 import { z } from "zod";
 
 const createVariantSchema = z.object({
-  productBaseId: z.string(),
+  productBaseId: z.number(),
   name: z.string().min(1, "Name is required"),
   width: z.number().min(1, "Width must be greater than 0"),
   height: z.number().min(1, "Height must be greater than 0"),

@@ -38,11 +38,11 @@ export default function OrdersPage() {
               <Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingLg">
-                    Orders with AI Pet Products
+                    Orders with AI Products
                   </Text>
 
                   <Text variant="bodyMd" as="p">
-                    Track orders containing AI-generated pet products and their fulfillment status.
+                    Track orders containing AI-generated products and their fulfillment status.
                   </Text>
                 </BlockStack>
               </Card>
@@ -52,7 +52,7 @@ export default function OrdersPage() {
                   heading="No AI product orders yet"
                   image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
                 >
-                  <p>Orders containing AI-generated pet products will appear here for tracking and fulfillment.</p>
+                  <p>Orders containing AI-generated products will appear here for tracking and fulfillment.</p>
                 </EmptyState>
               </Card>
             </BlockStack>
